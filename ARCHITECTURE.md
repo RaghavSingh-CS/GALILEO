@@ -24,11 +24,17 @@ The application relies heavily on Zustand for decoupled, scalable state manageme
 ### Workspace & Experiments
 The `Workspace` view is the core of the application, dynamically rendering different experiments based on the `registry.ts` in `/experiments`. Experiments define their inputs, variables, and formulas for calculating outcomes.
 
-### Simulation Pacing & Timed Steps
-Experiments support "Continuous Auto-Sweep" or timed step data collection. The pacing of these timed steps (e.g., fast, standard, slow) is controlled by the `settings.ts` store and executed within the experiment engine. This allows simulated physics and chemistry variables to update over time, simulating real-world sensor data collection.
 
 ### AI Integration
 The Express server acts as a proxy to the Gemini API (`@google/genai`). The frontend communicates with this proxy rather than exposing the API key directly in the browser. The `settings.ts` store controls how verbose or pedagogical the AI responses are.
 
 ### Styling
 Tailwind CSS is used for all styling, providing a highly customizable and responsive design system. The application features a dark-themed, scientific aesthetic ("GALILEO Lab").
+
+---
+
+## Project Timestamp Ledger
+*This section acts as a chronological record of architectural changes and major updates, specifically to provide context for AI assistants and developers.*
+
+- **[Initial State]:** GALILEO Lab project established. Built as a React SPA (Vite/TypeScript/Tailwind CSS) with an Express backend proxy. Core features include physics/chemistry simulations (Ohm's Law, Titration), real-time Recharts graphing, Zustand global state management, and an integrated Gemini AI assistant.
+- **[2026-08-23 18:44]:** Established the `ARCHITECTURE.md` documentation, generated project `README.md`, and implemented a contextual "Close (X)" button in the Settings tab using `useNavigationStore` state tracking.
