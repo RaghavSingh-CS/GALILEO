@@ -525,3 +525,43 @@ Stop for Stage 7 review. The next approved stage may introduce generic volumetri
 - A core burette vessel is assumed to have been filled through ordinary core composition before delivery. Filling technique, meniscus reading, droplets, rinsing, precision increments, and refill behavior are not simulated.
 - One configuration targets one receiving apparatus during a trial. Higher layers may compose generic measured aliquot transfer and burette delivery around their own apparatus topology without changing this layer.
 - The mechanical API can be reused unchanged for Mohr's-salt/permanganate, oxalic-acid/permanganate, or future acid-base trials because it knows only apparatus IDs, volumes, readings, and lifecycle. Stage 9 may add named scientific interpretation above this boundary without moving it into generic volumetric code.
+
+### Stage 9 — Shared permanganate observation semantics — 2026-08-23 18:28:00 +05:30
+
+**Purpose and architectural boundary**
+
+- Added a narrow shared permanganate specialization because both approved named titration families use dissolved permanganate as a self-indicating titrant. The layer derives persistent-excess observations while reusing Stage 8 volumetric state unchanged.
+- Stage 9 is pure derivation: it performs no liquid transfer, burette transition, reaction mutation, trial completion, or ChemistryState update. Actual dissolved titrant inventory is read from the volumetric delivery-target vessel in `ChemistryState`; readings and delivered volume remain exclusively owned by the generic volumetric layer.
+- No extra shared state was introduced. Endpoint, overshoot, excess, equivalence satisfaction, and trial assessment are returned derived values rather than persisted flags or counters.
+
+**Named-reaction boundary**
+
+- Future named reaction engines provide `PermanganateReactionProgress`, containing only `consumedPermanganateMol` and `remainingReactiveCapacityMol`. This layer does not calculate either fact, any reaction equation, coefficient, analyte identity, acid prerequisite, temperature prerequisite, or final concentration.
+- Shared derivation obtains actual dissolved permanganate from ChemistryState, calculates excess as actual minus named-consumed inventory, and rejects impossible progress such as consumption beyond actual inventory or simultaneous positive excess and remaining reactive capacity.
+- This contract lets different named reactions calculate their own chemically honest capacity while sharing the same self-indicator semantics. ChemistryState is not mutated with invented reacted species or a second reduced-inventory counter before a named reaction model exists.
+
+**Equivalence, endpoint, and overshoot**
+
+- Equivalence and endpoint remain distinct. Zero remaining named reactive capacity means equivalence is satisfied, but zero permanganate excess remains `decolorized` / `before-endpoint` because no persistent positive self-indicator excess exists.
+- A positive excess up to and including the configured allowance derives `endpoint`. Excess above the allowance derives `overshot`. Remaining reactive capacity with no excess derives `decolorized` / `before-endpoint`.
+- Observation never automatically completes a volumetric trial. The learner may stop before endpoint, at endpoint, or after overshoot, and may continue delivering after first observing endpoint until the generic trial is mechanically completed.
+
+**Threshold policy and configuration**
+
+- `PermanganateTitrationConfiguration` requires a configured titrant material ID and `endpointExcessAllowanceMol`. The material must exist and the allowance must be finite and nonnegative.
+- Stage 9 defines no numeric endpoint allowance. Future named prototype configurations must choose and document their value as a GALILEO simulation assumption, not an official NCERT/CBSE numeric interpretation of faint permanent pink.
+- The shared implementation does not require solid permanganate weighing or molar mass. Test fixtures include an ordinary core material definition only because ChemistryConfiguration requires configured material identity.
+
+**Files, APIs, and verification**
+
+- Added `frontend/src/engines/chemistry/permanganate/{types,validation,derived,index}.ts`.
+- Added `frontend/src/engines/chemistry/__tests__/permanganate.test.ts`.
+- Public APIs are `derivePermanganateIndicatorState`, `derivePermanganateTrialAssessment`, `validatePermanganateConfiguration`, and `validatePermanganateAssessmentInput`, with focused configuration, progress, indicator, assessment, and result contracts.
+- Tests cover known/missing material configuration, zero and invalid allowances, invalid/inconsistent reaction progress, remaining capacity, exact equivalence, positive endpoint excess, inclusive allowance, overshoot, active/completed mechanical trials, non-completion, immutability, and absence of duplicated volumetric state.
+- `npm run typecheck`: passed. `npm test`: 11 files and 250 tests passed.
+
+**Limitations and next stage**
+
+- The model intentionally has no colour intensity, persistence timing, fading, droplet mechanics, generic indicator chemistry, reaction products, acidic-medium validation, or reaction-state transition.
+- A zero configured allowance is structurally valid but makes every positive excess overshot; named definitions wanting an observable endpoint band should configure a positive allowance.
+- The next named Mohr's-salt titration stage must derive reaction progress from actual analyte/titrant state, define its own acidic-medium and stoichiometric rules, choose and disclaim its endpoint allowance, and preserve the separation between reaction assessment, shared observation, and mechanical completion.
