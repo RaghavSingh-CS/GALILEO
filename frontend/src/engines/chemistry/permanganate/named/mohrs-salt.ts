@@ -32,9 +32,14 @@ import type {
   PermanganateReactionProgress,
   PermanganateTitrationConfiguration,
 } from '..';
+import {
+  POTASSIUM_PERMANGANATE_MATERIAL_ID,
+  PROTOTYPE_ENDPOINT_EXCESS_ALLOWANCE_MOL,
+  PROTOTYPE_PERMANGANATE_MOLARITY_MOL_PER_L,
+  SULFURIC_ACID_MATERIAL_ID,
+} from './prototype';
 
-export const POTASSIUM_PERMANGANATE_MATERIAL_ID = 'potassium-permanganate';
-export const SULFURIC_ACID_MATERIAL_ID = 'sulfuric-acid';
+export { POTASSIUM_PERMANGANATE_MATERIAL_ID, SULFURIC_ACID_MATERIAL_ID };
 export const MOHRS_TITRATION_BURETTE_ID = 'mohrs-titration-burette';
 export const MOHRS_TITRATION_FLASK_ID = 'mohrs-titration-conical-flask';
 export const MOHRS_TITRATION_ACID_SOURCE_ID = 'mohrs-titration-acid-source';
@@ -46,11 +51,11 @@ export const MOHRS_SALT_TITRATION_SPEC = {
   acidVolumeL: 0.005,
   acidMolarityMolPerL: 1,
   requiredSulfuricAcidMol: 0.005,
-  actualTitrantMolarityMolPerL: 0.01,
+  actualTitrantMolarityMolPerL: PROTOTYPE_PERMANGANATE_MOLARITY_MOL_PER_L,
   buretteFillVolumeL: 0.05,
   permanganateToReactiveIronRatio: 1 / 5,
   /** GALILEO endpoint-display assumption: 0.05 mL of the prototype titrant. */
-  endpointExcessAllowanceMol: 0.0000005,
+  endpointExcessAllowanceMol: PROTOTYPE_ENDPOINT_EXCESS_ALLOWANCE_MOL,
 } as const;
 
 export const MOHRS_SALT_TITRATION_CONFIGURATION: ChemistryConfiguration = {

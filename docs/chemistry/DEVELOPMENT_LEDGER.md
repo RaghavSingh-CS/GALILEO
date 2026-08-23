@@ -605,3 +605,43 @@ Stop for Stage 7 review. The next approved stage may introduce generic volumetri
 - Reaction progress is an instantaneous derived interpretation of transferred starting inventory. No products, rate, mixing delay, acid consumption, air oxidation, colour intensity, persistence time, or concordance/averaging are modeled.
 - The named factory currently uses the canonical Mohr preparation configuration and fixed prototype apparatus. Higher experiment composition may expose controlled setup variants later without moving named chemistry into shared layers.
 - The next oxalic-acid titration must supply its own stoichiometry, temperature prerequisite, acid policy, and reaction progress while reusing generic volumetric and shared permanganate observation unchanged.
+
+### Stage 11 — Named oxalic-acid permanganate titration — 2026-08-23 18:44:00 +05:30
+
+**Scientific workflow and named boundary**
+
+- Added the NCERT Class XII named titration of a `10 mL` nominal `0.1 mol/L` oxalic-acid standard against permanganate after adding approximately `5 mL` of `1.0 mol/L` sulphuric acid and heating the trial mixture to `50–60 °C`.
+- The named equation is `2 MnO4- + 5 C2O4^2- + 16 H+ → 2 Mn2+ + 10 CO2 + 8 H2O`. Only this named engine contains the `2:5` permanganate/oxalate stoichiometry and the bounded mapping `1 mol dissolved oxalic-acid dihydrate → 1 mol reactive oxalate-equivalent substrate`.
+- Generic core, volumetric mechanics, and shared permanganate observation remain unchanged. No general dissociation/species ontology, generic reaction engine, kinetics, autocatalysis, catalyst buildup, induction period, or product-state mutation was introduced.
+
+**Actual aliquot, acid, and temperature models**
+
+- The aliquot helper delegates an actual `10 mL` transfer from the prepared source vessel through core `transferLiquid` and `mlToL`. Actual dissolved oxalic-acid-dihydrate inventory in the receiving flask—not `0.1 × 0.010`—is the reaction authority.
+- The acid source contains actual `0.005 mol` dissolved sulphuric acid in `0.005 L`. At least that amount must be present in the trial flask. Missing/insufficient acid preserves physical delivery but makes intended reaction interpretation unsupported; no alternative products are invented.
+- `heatOxalicAcidTitration` is a thin immutable wrapper around core `heatVessel`. The current flask temperature is the only authority: `50.0–60.0 °C` inclusive is supported, below 50 gives `TEMPERATURE_TOO_LOW`, and above 60 gives `TEMPERATURE_TOO_HIGH`. There is no `wasHeated` flag, numerical widening, cooling model, or rate calculation.
+
+**Reaction progress and CO2 observation**
+
+- Pure progress derives capacity as actual reactive oxalate multiplied by `2/5`, consumed permanganate as the lesser of actual delivered inventory and capacity, and remaining capacity as the positive difference. Shared Stage 9 derives excess, decolorized state, endpoint, and overshoot.
+- For the correct aliquot, tests derive `0.001 mol` substrate and `0.0004 mol` permanganate capacity; neither is hard-coded in production.
+- `generatedCo2Mol` is a named pure observation equal to consumed permanganate multiplied by five, with `co2EvolutionExpected` derived from positivity. No gas material, gas volume, bubbles, pressure, or ChemistryState mutation is added.
+
+**Shared prototype assumptions and learner calculation**
+
+- Extracted only the now-genuinely-shared named prototype constants into `permanganate/named/prototype.ts`: hidden actual KMnO4 concentration `0.01 mol/L` and endpoint allowance `5×10^-7 mol` (equivalent to `0.05 mL` of prototype titrant), plus common material IDs. The Mohr named API retains its prior exported material identities and behavior.
+- Both values remain GALILEO simulation/display assumptions, not learner-known answers or official NCERT/CBSE values. The correct oxalic trial has an approximately `40 mL` equivalence scale within the 50 mL burette.
+- Learner calculation is returned only for a completed supported endpoint trial and uses `(2 × nominal 0.1 mol/L × 0.010 L) / (5 × actual recorded titre L)`. Hidden actual titrant truth remains separate. Off-target usable preparation shifts actual endpoint through real inventory while the nominal textbook calculation becomes wrong, demonstrating error propagation without auto-correction.
+
+**Usability precedence, files, and verification**
+
+- Scientific invalidity dominates observable/mechanical classification: unusable source, insufficient acid, or out-of-range current temperature produces `unusable` and no shared endpoint or learner result. Otherwise an active trial is `in-progress`; completed shared endpoint is `usable`, shared overshoot is `overshot`, and completion while decolorized is `stopped-early`.
+- Added `frontend/src/engines/chemistry/permanganate/named/oxalic-acid.ts`, `frontend/src/engines/chemistry/permanganate/named/prototype.ts`, and `frontend/src/engines/chemistry/__tests__/oxalic-acid-titration.test.ts`; updated the named barrel and Mohr module to consume shared prototype constants.
+- Added facade APIs for creation, actual aliquot/acid transfer, heating, trial start, incremental delivery, completion, reaction-progress derivation, and named result derivation.
+- Tests cover constants, sharing, correct capacity, limiting conditions, equivalence, endpoint/overshoot, CO2 derivation, all temperature boundaries, core heating delegation, acid conditions, precedence, full incremental workflow, off-target propagation, unusable preparation, early completion, overshoot, and immutability.
+- `npm run typecheck`: passed. `npm test`: 13 files and 275 tests passed.
+
+**Limitations and next stage**
+
+- The supported reaction is an instantaneous derived interpretation when acid and current temperature prerequisites are satisfied. No duration, cooling, heat loss, acid consumption, reaction products, gas behavior, colour persistence, kinetics, or autocatalysis is modeled.
+- Single-trial results only are supported; concordance, averaging, experiment/UI composition, and learner-facing hiding of simulation truth remain integration work.
+- Final Chemistry integration should review named-factory configuration extensibility, facade exposure, result presentation boundaries, and whether a small isolated concordance stage is later justified without changing the engines completed here.
