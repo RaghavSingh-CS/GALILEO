@@ -10,15 +10,8 @@ import type {
   PreparationResult,
   PreparationState,
 } from './types';
+import { isWithinExperimentalTolerance } from './numeric';
 import { isPreparationDefinitionValid, isPreparationStateValid } from './validation';
-
-function withinExperimentalTolerance(
-  actual: number,
-  target: number,
-  tolerance: number,
-): boolean {
-  return Math.abs(actual - target) <= tolerance;
-}
 
 function presentMaterialIds(
   dissolved: Readonly<Record<MaterialId, number>>,
@@ -90,12 +83,12 @@ export function derivePreparationResult(
   }
 
   const issues: PreparationIssueCode[] = [];
-  if (!withinExperimentalTolerance(
+  if (!isWithinExperimentalTolerance(
     actualMassEquivalentG,
     definition.targetMassG,
     definition.massToleranceG,
   )) issues.push('MASS_OFF_TARGET');
-  if (!withinExperimentalTolerance(
+  if (!isWithinExperimentalTolerance(
     vessel.contents.volumeL,
     definition.targetVolumeL,
     definition.volumeToleranceL,

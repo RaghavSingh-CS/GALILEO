@@ -1,5 +1,6 @@
 export { createPreparation, applyPreparationAction } from './engine';
 export { derivePreparationResult } from './derived';
+export { isWithinExperimentalTolerance } from './numeric';
 export { isPreparationDefinitionValid, isPreparationStateValid } from './validation';
 export type {
   PreparationAction,

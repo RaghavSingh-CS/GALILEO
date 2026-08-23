@@ -341,3 +341,66 @@ Stop for Stage 4 review before adding any named standard-solution preparation de
 
 - Added coverage for exact zero experimental tolerances, nonzero physical tolerances, malformed tolerances and dissolution modes, repeated/idempotent mixing, dissolved contamination, high mass and volume, inconsistent history, malformed derivation input, every invalid external-solvent numeric input, repeated external additions, inventory/temperature preservation, and capacity excess immediately inside and outside numerical tolerance.
 - `npm run typecheck`: passed. `npm test`: 6 files and 142 tests passed. `git diff --check`: passed. Source scans found no stale action/field names, UI dependencies, named preparation, heating, titration, or reaction behavior; the old field name remains only in this correction history.
+
+### Stage 5 — Named standard oxalic-acid preparation — 2026-08-23 17:52:43 +05:30
+
+**Scientific scope and configuration**
+
+- Added the NCERT/CBSE Class XII standard-solution preparation for hydrated crystalline oxalic acid, represented by the canonical material ID `oxalic-acid-dihydrate` and display name `Oxalic acid dihydrate`.
+- The weighed reagent is the dihydrate `(COOH)2·2H2O` represented by identity and molar mass only. Its configured molar mass is `126 g/mol`; no anhydrous substitution, formula parser, hydrate dissociation, or separate water-of-crystallization inventory was introduced.
+- The named target is `0.1 mol/L` at the `0.250 L` calibration mark. The single configured target mass is `3.15 g`, from `0.1 mol/L × 0.250 L × 126 g/mol`.
+- The named module supplies the material, apparatus, preparation definition, constants, initial scientific state, and narrow create/apply/derive facade. It delegates every transition and classification to the generic core and preparation layers and adds no new preparation mechanics.
+
+**Prototype experimental assumptions**
+
+- `massToleranceG` is `0.01 g` and `volumeToleranceL` is `0.001 L` (1 mL). These are explicit GALILEO prototype classification assumptions reflecting plausible simulation granularity; they are not official CBSE/NCERT tolerances or marking rules.
+- Named validity uses only these configured physical tolerances. IEEE-754 numerical tolerance remains restricted to arithmetic capacity handling and does not alter experimental classification.
+- `dissolutionMode` is `complete-on-mix`: after positive bulk solvent exists, mixing moves all target dihydrate inventory from undissolved to dissolved. This is the bounded generic preparation assumption, not a solubility or hydrate-reaction model.
+
+**Actual-state and error propagation**
+
+- The named facade never inserts target values into scientific state. Low/high mass, low/high final volume, repeated external-solvent additions, premature completion, and configured contamination remain represented exactly as performed within physical and lifecycle limits.
+- Actual concentration continues to derive exclusively from actual dissolved dihydrate amount divided by actual bulk liquid volume. Measured-mass history remains procedural and cannot override molar inventory when validity is derived.
+- Wrong but usable quantities classify `off-target`; wrong material, contamination, or target remaining undissolved at completion classify `unusable`. Attempts beyond modeled capacity are blocked atomically.
+
+**Volumetric flask mark and capacity decision**
+
+- The preparation definition retains `targetVolumeL: 0.250` as the calibration mark. The configured volumetric-flask `capacityL` is a bounded `0.300 L` GALILEO sandbox maximum so a student can over-dilute beyond the mark and still produce an off-target scientific state.
+- `0.300 L` is not asserted to be the physical maximum of a real 250 mL flask. It is a prototype modeling boundary chosen to preserve meaningful over-mark error behavior without adding spill simulation.
+
+**Files added/modified**
+
+- Added `frontend/src/engines/chemistry/preparation/named/oxalic-acid.ts`.
+- Added `frontend/src/engines/chemistry/preparation/named/index.ts`.
+- Added `frontend/src/engines/chemistry/__tests__/oxalic-acid-preparation.test.ts`.
+- Modified `docs/chemistry/DEVELOPMENT_LEDGER.md`.
+
+**Tests and verification**
+
+- Added named coverage for authoritative constants, dihydrate identity, molar-mass calculation, definition wiring, calibration-mark/capacity separation, correct preparation, staged solvent addition and dissolution, low/high mass, below/above-mark volume, actual concentration, capacity blocking, premature completion, contamination preservation, inventory authority, prototype tolerance behavior, and immutability.
+- `npm run typecheck`: passed. `npm test`: 7 files and 157 tests passed. `git diff --check` and new-file whitespace checks passed. Source scans found no Mohr's-salt, titration, redox/reaction, heating, UI, or browser-runtime implementation in Stage 5.
+
+**Known limitations and deferred work**
+
+- The named preparation uses the generic complete-on-mix assumption and does not model dissolution rate, saturation, heat of solution, transfer losses, meniscus optics, balance mechanics, or spill behavior.
+- The engine-side named module contains scientific configuration and behavior only. Objective, apparatus presentation, procedure, and guidance metadata remain deferred to the experiment layer.
+- Mohr's-salt preparation, standardization context, volumetric trials, permanganate redox chemistry, heating, titration, endpoints, equivalence behavior, UI integration, and experiment registries remain explicitly unimplemented.
+
+**Pending/next steps**
+
+Stop for Stage 5 review before implementing any Mohr's-salt preparation or volumetric/titration behavior.
+
+#### Linked Stage 5 tolerance-boundary correction — 2026-08-23 17:59:46 +05:30
+
+**Problem and correction**
+
+- Raw IEEE-754 subtraction made inclusive decimal experimental boundaries appear slightly larger than their configured physical tolerances. For example, `3.16 - 3.15` and `0.251 - 0.250` are not represented as exact decimal differences.
+- Added preparation-only `isWithinExperimentalTolerance`. For a positive configured tolerance it infers the base-10 measurement scale expressed by that tolerance, scales actual, target, and tolerance numerically, and compares the resulting difference at that physical measurement scale. A zero tolerance retains exact `actual === target` semantics.
+- This helper is solely an experimental classification policy. It does not call or reuse the core IEEE arithmetic tolerance, mutate or round stored `ChemistryState`, normalize inventory, or round concentration calculations.
+
+**Boundary behavior and verification**
+
+- With `0.01 g`, both `3.14 g` and `3.16 g` are inclusively on-target; `3.1399 g` and `3.1601 g` are off-target.
+- With `0.001 L`, both `0.249 L` and `0.251 L` are inclusively on-target; `0.2489 L` and `0.2511 L` are off-target.
+- Added generic helper coverage for zero, `0.01`, and `0.001` tolerances plus named oxalic-acid boundary regressions.
+- `npm run typecheck`: passed. `npm test`: 7 files and 166 tests passed. `git diff --check` and new-file whitespace checks passed. Preparation classification contains no call to the core IEEE helper, and source scans found no Mohr's-salt, titration, heating, reaction, or UI behavior in this correction.

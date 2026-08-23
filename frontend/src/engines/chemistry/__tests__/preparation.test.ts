@@ -6,6 +6,7 @@ import {
   createPreparation,
   derivePreparationResult,
   isPreparationDefinitionValid,
+  isWithinExperimentalTolerance,
 } from '../preparation';
 import type {
   PreparationAction,
@@ -260,6 +261,21 @@ describe('material history and bounded dissolution', () => {
 });
 
 describe('bulk solvent and precision', () => {
+  it('compares experimental values at configured decimal measurement resolution', () => {
+    expect(isWithinExperimentalTolerance(1, 1, 0)).toBe(true);
+    expect(isWithinExperimentalTolerance(1 + Number.EPSILON, 1, 0)).toBe(false);
+
+    expect(isWithinExperimentalTolerance(3.14, 3.15, 0.01)).toBe(true);
+    expect(isWithinExperimentalTolerance(3.16, 3.15, 0.01)).toBe(true);
+    expect(isWithinExperimentalTolerance(3.1399, 3.15, 0.01)).toBe(false);
+    expect(isWithinExperimentalTolerance(3.1601, 3.15, 0.01)).toBe(false);
+
+    expect(isWithinExperimentalTolerance(0.249, 0.250, 0.001)).toBe(true);
+    expect(isWithinExperimentalTolerance(0.251, 0.250, 0.001)).toBe(true);
+    expect(isWithinExperimentalTolerance(0.2489, 0.250, 0.001)).toBe(false);
+    expect(isWithinExperimentalTolerance(0.2511, 0.250, 0.001)).toBe(false);
+  });
+
   it('adds bulk volume without manufacturing solvent material', () => {
     const initial = create();
     const unrelated = initial.chemistryState.vessels.unrelated;
