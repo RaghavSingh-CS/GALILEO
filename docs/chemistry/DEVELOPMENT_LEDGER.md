@@ -102,3 +102,127 @@ No scientific interfaces are implemented in Stage 1. The empty Chemistry public 
 **Pending/next steps**
 
 Stop for review after tooling verification. With further approval, Stage 2 will define generic Chemistry state, types, numerical invariants, and their tests without implementing named experiment procedures in the core.
+
+### 2026-08-23 16:51:50 +05:30 — Stage 2 generic Chemistry domain foundation
+
+**Decision/change**
+
+Introduced the experiment-agnostic Chemistry domain foundation: stable material and apparatus definitions, mutable scientific vessel state expressed as readonly serializable data, generic future action contracts, action outcomes/messages, numeric guards, and structured configuration/state invariant validation.
+
+Canonical property units are explicit: amount in `amountMol`, liquid volume in `volumeL`, mass in `massG`, temperature in `temperatureC`, molar mass in `molarMassGPerMol`, and capacity in `capacityL`. Concentration is not stored and will be derived later from amount and volume without rounding core state.
+
+**Rationale**
+
+Plain objects and readonly `Record` collections are JSON-friendly, deterministic, easy to inspect, and suitable for later immutable transitions. Record keys are the canonical material, apparatus, and vessel IDs; nested IDs are deliberately absent. Stable chemical/apparatus definitions are held in `ChemistryConfiguration`, while current dissolved and undissolved amounts, bulk liquid volume, and temperature are held in `ChemistryState`.
+
+Every vessel uses one coherent contents representation. Empty vessels use zero volume and empty amount records; weighed solid is stored in `undissolvedAmountsMol`; transferable solution material is stored in `dissolvedAmountsMol`. This avoids nullable contents while not conflating mixing, dissolution, or transferability.
+
+**Files added/modified**
+
+- `frontend/src/engines/chemistry/core/types.ts`
+- `frontend/src/engines/chemistry/core/numeric.ts`
+- `frontend/src/engines/chemistry/core/validation.ts`
+- `frontend/src/engines/chemistry/core/index.ts`
+- `frontend/src/engines/chemistry/index.ts`
+- `frontend/src/engines/chemistry/__tests__/numeric.test.ts`
+- `frontend/src/engines/chemistry/__tests__/validation.test.ts`
+- `frontend/src/engines/chemistry/__tests__/contracts.test.ts`
+- Removed `frontend/src/engines/chemistry/core/.gitkeep`
+- Removed `frontend/src/engines/chemistry/__tests__/.gitkeep`
+- `docs/chemistry/DEVELOPMENT_LEDGER.md`
+
+**Interfaces/contracts affected**
+
+- Added lightweight `ApparatusId` and `MaterialId` aliases.
+- Added immutable `ChemicalMaterialDefinition`, `ApparatusDefinition`, and `ChemistryConfiguration` contracts.
+- Added `MixtureState`, `VesselState`, and `ChemistryState` as mutable-domain-state shapes represented with readonly TypeScript properties. Mixture state separates dissolved from undissolved molar amounts.
+- Added future `CoreAction` discriminants for `add-material`, `transfer-liquid`, `mix`, and `heat`; no behavior executes these actions in Stage 2.
+- Added `ActionOutcome` with `VALID`, `WARNING`, and `BLOCKED`, plus UI-neutral `ChemistryMessage` and `CoreActionResult` contracts.
+- Added structured `StateValidationIssue` results and non-throwing configuration/state validation APIs suitable for typed persisted or adapter-provided data.
+- Exported stable contracts and validation entry points through the Chemistry public barrels. Numeric helper implementation remains internal to the core until another layer needs it.
+
+Action outcome remains distinct from future preparation or trial validity. The core contains no reset, repeat, trial, titrant, endpoint, equivalence, or named-experiment action.
+
+**Scientific assumptions**
+
+- Chemical definitions use a finite positive molar mass in g/mol; mutable mixtures reference definitions by material ID rather than duplicating metadata.
+- Dissolved and undissolved material records store nonnegative finite molar amounts. Zero is valid during validation; successful future operation outputs will omit exact-zero entries. No near-zero tolerance normalization is performed.
+- Liquid volume is finite and nonnegative and may equal, but not exceed, configured apparatus capacity.
+- `volumeL` is total bulk liquid volume. Bulk solvent water is not normally duplicated in material amount records unless a bounded future calculation explicitly needs its chemical amount.
+- Apparatus capacity is stable configuration and must be finite and positive.
+- Vessel temperature must be finite. Stage 2 imposes no experiment-specific temperature range.
+- Generic `mix` remains an action contract but has no generic homogeneity flag and does not imply that every material dissolves.
+- No scientific values are rounded in core state.
+
+**Tests/verification performed**
+
+- `npm run typecheck`: passed under strict TypeScript with ES2023 libraries and no DOM globals.
+- `npm test`: 3 test files passed, 41 tests passed after the linked Stage 2 correction below.
+- Numeric tests cover finite, NaN, positive/negative infinity, negative, zero, nonnegative, and positive-only behavior.
+- Validation tests cover valid/empty vessels, solid-only and liquid-plus-undissolved contents, dissolved solutions, the bulk-solvent policy, exact capacity, invalid capacity, overflow, invalid volume, invalid temperature, malformed IDs, unknown materials/apparatus, invalid molar amounts, malformed apparatus metadata, natural JSON serialization, and validation immutability.
+- Contract tests exercise every generic action discriminant and the outcome/message result shape without implementing action behavior.
+
+**Known limitations**
+
+- Validation accepts typed `ChemistryState` and `ChemistryConfiguration`; a full schema parser for completely untyped external input is not introduced.
+- Detailed scientific observations are deferred until the first stage that produces concrete observations. No speculative observation ontology was added.
+- No floating-point residue normalization exists. A tolerance may be introduced only with a concrete later operation and documented scale.
+- Apparatus kinds are intentionally limited to the five approved engine-relevant vessels. Balance mechanics and visual/support apparatus remain outside core state.
+- `MixtureState` distinguishes only dissolved from undissolved inventory; it does not model a general phase system, precipitation objects, gas containment, activity, or molecular structure.
+
+**Pending/next steps**
+
+Stop for Stage 2 review. With approval, Stage 3 may implement generic material addition, liquid transfer, mixing, and derived quantity behavior using these contracts and invariants. It must not introduce named preparation or titration chemistry into the core.
+
+#### Linked Stage 2 correction — 2026-08-23 17:04:51 +05:30
+
+**Decision/change**
+
+Corrected the Stage 2 domain model before Stage 3 dependencies were introduced. Removed nested IDs from material definitions, apparatus definitions, and vessel state; record keys are now canonical identity. Renamed species terminology to material terminology so actual weighed hydrate/reagent identities can be configured by name and molar mass without a chemical ontology.
+
+Replaced the single component map and generic homogeneity flag with `dissolvedAmountsMol` and `undissolvedAmountsMol`. Bulk liquid `volumeL` is independent of tracked chemical amounts, and solvent water is not recorded merely to account for solution volume. A generic `mix` action remains declared but does not itself assert homogeneity or universal dissolution.
+
+**Rationale**
+
+Nested IDs duplicated record identity and would have required every immutable operation to keep multiple values synchronized. The former homogeneity flag could not distinguish dissolved solute from solid still present and could have caused proportional liquid transfer to move undissolved material. The corrected representation supports standard-solution preparation and later liquid transfer without introducing phase simulation or solubility tables.
+
+**Files added/modified**
+
+- `frontend/src/engines/chemistry/core/types.ts`
+- `frontend/src/engines/chemistry/core/validation.ts`
+- `frontend/src/engines/chemistry/core/index.ts`
+- `frontend/src/engines/chemistry/__tests__/numeric.test.ts`
+- `frontend/src/engines/chemistry/__tests__/validation.test.ts`
+- `frontend/src/engines/chemistry/__tests__/contracts.test.ts`
+- `docs/chemistry/DEVELOPMENT_LEDGER.md`
+
+**Interfaces/contracts affected**
+
+- `SpeciesId` became `MaterialId`; `ChemicalSpeciesDefinition` became `ChemicalMaterialDefinition`.
+- `ChemistryConfiguration.species` became `materials`.
+- `CoreAction.add-material` and `ChemistryMessage` now reference material IDs.
+- Apparatus, material, and vessel nested `id` properties were removed.
+- `MixtureState.components` and `homogeneity` were replaced by dissolved and undissolved molar-amount records.
+- The apparatus-kind runtime list is now the canonical constant from which `ApparatusKind` is derived.
+
+**Scientific assumptions**
+
+- Weighed solid will later enter undissolved inventory; mass will be converted to mol using the configured actual material molar mass.
+- Dissolution will move bounded amounts from undissolved to dissolved inventory under preparation behavior, not through a universal solubility model.
+- Only dissolved inventory will later be eligible for proportional liquid transfer.
+- Exact zero is accepted as valid input state. Successful future operations will omit exact-zero entries, and missing lookups will mean zero. No generic near-zero tolerance exists.
+
+**Tests/verification performed**
+
+- `npm run typecheck`: passed.
+- `npm test`: 3 files passed, 41 tests passed.
+- Added coverage for both amount records, solid-before-solvent, liquid with undissolved material, bulk-solvent representation, material references, molar-mass bounds, negative zero, configuration/state JSON round trips, and validation nonmutation.
+
+**Known limitations**
+
+- No operations, dissolution behavior, proportional transfer, or zero-entry normalization is implemented in Stage 2.
+- Arbitrary unknown JSON parsing remains deferred until an external persistence/UI boundary exists.
+
+**Pending/next steps**
+
+Stop for review. Stage 3 may use the corrected material inventories to implement generic operations, while leaving named preparation and titration behavior to their approved higher layers.
