@@ -645,3 +645,48 @@ Stop for Stage 7 review. The next approved stage may introduce generic volumetri
 - The supported reaction is an instantaneous derived interpretation when acid and current temperature prerequisites are satisfied. No duration, cooling, heat loss, acid consumption, reaction products, gas behavior, colour persistence, kinetics, or autocatalysis is modeled.
 - Single-trial results only are supported; concordance, averaging, experiment/UI composition, and learner-facing hiding of simulation truth remain integration work.
 - Final Chemistry integration should review named-factory configuration extensibility, facade exposure, result presentation boundaries, and whether a small isolated concordance stage is later justified without changing the engines completed here.
+
+### Stage 12 — Final Chemistry integration and polish — 2026-08-23 18:51:00 +05:30
+
+**Public API and integration decisions**
+
+- Expanded `frontend/src/engines/chemistry/index.ts` into a deliberate experiment-facing facade. It exports canonical named preparation creation/actions/results, named titration setup/actions/results, stable result and reason types, shared indicator assessment types, required named material IDs, and intentionally public core state/validation contracts.
+- The facade does not export internal reaction-progress derivation, generic transition machinery, prototype hidden-truth constants, named apparatus configuration, or broad wildcard internals. Deep module imports remain available for engine diagnostics and focused subsystem tests.
+- No operational configuration override framework was added. Canonical named stoichiometry, curriculum targets, hidden titrant truth, endpoint policy, apparatus configuration, and setup assumptions remain protected defaults. Existing action parameters already provide the useful controlled runtime inputs: actual source preparation state, initial burette reading, delivery increments, and oxalic heating target.
+
+**Hidden truth and observation contract**
+
+- Named results retain actual analyte inventory, reaction progress, capacity implications, and actual titrant concentration for simulation diagnostics, but field documentation explicitly identifies these as internal simulation truth. `calculatedTitrantMolarityMolPerL` remains the distinct learner result.
+- UI-facing observation does not require reimplementing scientific decisions. Both results expose `reactionSupported`, stable `issues`, usability, delivered volume, and shared indicator assessment. Mohr additionally exposes `acidMediumSatisfied`; oxalic exposes `acidMediumSatisfied`, `reactionTemperatureCondition`, generated CO2, and CO2-evolution expectation.
+- Future UI may inspect immutable ChemistryState for rendering/debugging but must not present internal actual concentration as the learner answer or independently decide preparation validity, acid sufficiency, temperature support, endpoint, overshoot, trial usability, or calculation.
+
+**Reset, repeat, and handoff behavior**
+
+- Preparation reset remains creation of a fresh canonical named preparation. Completed preparation and trial states remain closed and are never reopened or mutated.
+- Added `createNextOxalicAcidTitrationTrial` and `createNextMohrsSaltTitrationTrial`. Each creates a fresh conical flask, acid source, burette inventory, and not-started mechanical trial while reusing the previous trial's remaining prepared-source vessel and preserved source-preparation provenance.
+- Trial history, averaging, and concordance remain external. UI/experiment composition may retain completed immutable results, request another fresh trial, and record each result without hidden mutable engine history.
+- Preparation-to-titration handoff continues to pass actual source vessel inventory. No nominal concentration, target mass, or target volume replaces learner-produced state.
+
+**End-to-end verification and UI ownership**
+
+- Added a public-facade-only integration suite. It performs complete correct oxalic and Mohr preparations and incremental titrations, verifies shared endpoint behavior and learner calculations, exercises both off-target preparation error-propagation paths, checks invalid acid/temperature reasons, creates independent repeated trials from retained source solution, and verifies exact reference preservation after blocked post-completion delivery.
+- Correct oxalic integration verifies on-target `~0.1 mol/L`, actual `0.0004 mol` reaction capacity, derived `0.002 mol` CO2, endpoint, completion, usability, and calculated `~0.01 mol/L`. Correct Mohr integration verifies on-target `0.05 mol/L`, actual `0.0001 mol` capacity, endpoint, completion, usability, and calculated `~0.01 mol/L`.
+- `engines/chemistry` remains scientific truth and simulation. Objective, apparatus presentation, learner procedure copy, instructional guidance, controls, animation, and other presentation metadata remain owned by `experiments/chemistry` and the future UI/UX work.
+- `npm run typecheck`: passed. `npm test`: 14 files and 282 tests passed.
+
+**Deliberate limitations preserved**
+
+- No generic reaction engine, equilibrium/pH model, reaction kinetics, heat-transfer equations, cooling, gas-pressure/bubble physics, spills, generic solubility model, concordance/averaging, mutable undo/history, salt analysis, persistence, backend, or UI scientific-decision logic.
+- Hidden prototype KMnO4 truth and endpoint allowance remain simulation-only GALILEO assumptions. Preparation tolerances remain GALILEO classification assumptions, and the modeled 300 mL flask capacity remains a sandbox-only bound.
+
+## FINAL CHEMISTRY ENGINE STATUS
+
+- **Core:** immutable validated ChemistryState, apparatus/material contracts, material addition, proportional liquid transfer, concentration derivation, and bounded heating complete.
+- **Preparation:** generic free-form preparation, bounded complete-on-mix dissolution, physical tolerance classification, and error propagation complete.
+- **Named preparations:** oxalic-acid dihydrate and acid-conditioned Mohr's-salt standards complete, including on-target/off-target/unusable assessment.
+- **Volumetric:** arbitrary burette readings, actual inventory transfer, derived delivery, mechanical completion, atomic failure, and fresh repeat-trial composition complete.
+- **Shared permanganate:** pure decolorized/endpoint/overshot assessment with configured positive-excess allowance and named reaction boundary complete.
+- **Named oxalic:** actual aliquot chemistry, bounded acid and current `50–60 °C` prerequisites, `2:5` progress, CO2 observation, usability, and learner result complete.
+- **Named Mohr:** actual aliquot chemistry, bounded acid prerequisite, `1:5` progress, usability, and learner result complete without a heating prerequisite.
+- **Public API:** deliberate top-level named workflow facade, machine-readable outcomes/reasons, observation fields, immutable reset, and retained-source repeat helpers complete.
+- **Deferred:** UI/experiment metadata, concordance/averaging, salt analysis, richer physical/chemical models, persistence, and learner-facing presentation remain intentionally outside the completed Chemistry engine.

@@ -122,6 +122,8 @@ export type MohrsSaltTitrationIssueCode =
 
 export interface MohrsSaltTitrationResult {
   readonly reactionSupported: boolean;
+  readonly acidMediumSatisfied: boolean;
+  /** Internal simulation truth for diagnostics; not the learner-calculated result. */
   readonly availableReactiveIronMol: number;
   readonly reactionProgress: PermanganateReactionProgress | null;
   readonly permanganateAssessment: PermanganateAssessment | null;
@@ -210,6 +212,40 @@ export function createMohrsSaltTitration(
       sourcePreparationIssues: sourceResult.issues,
     },
     messages: [],
+  };
+}
+
+/** Creates a fresh trial using the prior trial's remaining prepared solution. */
+export function createNextMohrsSaltTitrationTrial(
+  previous: MohrsSaltTitrationState,
+): MohrsSaltTitrationActionResult {
+  const sourceVessel = previous.volumetric.chemistryState.vessels[
+    MOHRS_SALT_PREPARATION_VESSEL_ID
+  ];
+  if (!sourceVessel) {
+    return {
+      outcome: 'BLOCKED',
+      state: previous,
+      messages: [namedMessage('INVALID_SOURCE_PREPARATION', 'The retained source solution is unavailable.')],
+    };
+  }
+  const created = createMohrsSaltTitration({
+    preparation: {
+      chemistryState: {
+        vessels: { [MOHRS_SALT_PREPARATION_VESSEL_ID]: sourceVessel },
+      },
+      lifecycle: 'complete',
+      measuredMassesG: {},
+    },
+    acidificationPerformed: true,
+  });
+  return created.outcome === 'BLOCKED' ? created : {
+    ...created,
+    state: {
+      ...created.state,
+      sourcePreparationValidity: previous.sourcePreparationValidity,
+      sourcePreparationIssues: previous.sourcePreparationIssues,
+    },
   };
 }
 
@@ -343,6 +379,7 @@ export function deriveMohrsSaltTitrationResult(
   if (!reactionSupported) {
     return {
       reactionSupported,
+      acidMediumSatisfied: acidSupported,
       availableReactiveIronMol,
       reactionProgress: null,
       permanganateAssessment: null,
@@ -380,6 +417,7 @@ export function deriveMohrsSaltTitrationResult(
 
   return {
     reactionSupported,
+    acidMediumSatisfied: acidSupported,
     availableReactiveIronMol,
     reactionProgress,
     permanganateAssessment: assessment,

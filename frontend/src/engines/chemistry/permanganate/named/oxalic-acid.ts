@@ -121,8 +121,16 @@ export type OxalicAcidTitrationIssueCode =
   | 'TEMPERATURE_TOO_HIGH'
   | 'TRIAL_NOT_AT_ENDPOINT';
 
+export type OxalicAcidReactionTemperatureCondition =
+  | 'too-low'
+  | 'supported'
+  | 'too-high';
+
 export interface OxalicAcidTitrationResult {
   readonly reactionSupported: boolean;
+  readonly acidMediumSatisfied: boolean;
+  readonly reactionTemperatureCondition: OxalicAcidReactionTemperatureCondition;
+  /** Internal simulation truth for diagnostics; not the learner-calculated result. */
   readonly availableReactiveOxalateMol: number;
   readonly reactionProgress: PermanganateReactionProgress | null;
   readonly generatedCo2Mol: number;
@@ -208,6 +216,37 @@ export function createOxalicAcidTitration(
       sourcePreparationIssues: sourceResult.issues,
     },
     messages: [],
+  };
+}
+
+/** Creates a fresh trial using the prior trial's remaining prepared solution. */
+export function createNextOxalicAcidTitrationTrial(
+  previous: OxalicAcidTitrationState,
+): OxalicAcidTitrationActionResult {
+  const sourceVessel = previous.volumetric.chemistryState.vessels[
+    OXALIC_ACID_PREPARATION_VESSEL_ID
+  ];
+  if (!sourceVessel) {
+    return {
+      outcome: 'BLOCKED',
+      state: previous,
+      messages: [namedMessage('INVALID_SOURCE_PREPARATION', 'The retained source solution is unavailable.')],
+    };
+  }
+  const created = createOxalicAcidTitration({
+    chemistryState: {
+      vessels: { [OXALIC_ACID_PREPARATION_VESSEL_ID]: sourceVessel },
+    },
+    lifecycle: 'complete',
+    measuredMassesG: {},
+  });
+  return created.outcome === 'BLOCKED' ? created : {
+    ...created,
+    state: {
+      ...created.state,
+      sourcePreparationValidity: previous.sourcePreparationValidity,
+      sourcePreparationIssues: previous.sourcePreparationIssues,
+    },
   };
 }
 
@@ -359,6 +398,8 @@ export function deriveOxalicAcidTitrationResult(
     && !temperatureLow && !temperatureHigh
     && availableReactiveOxalateMol > 0;
   const deliveredVolumeMl = getDeliveredVolumeMl(state.volumetric.trial);
+  const reactionTemperatureCondition: OxalicAcidReactionTemperatureCondition
+    = temperatureLow ? 'too-low' : temperatureHigh ? 'too-high' : 'supported';
   const issues: OxalicAcidTitrationIssueCode[] = [];
   if (!sourceUsable) issues.push('SOURCE_PREPARATION_UNUSABLE');
   if (!acidSupported) issues.push('ACID_MEDIUM_INSUFFICIENT');
@@ -368,6 +409,8 @@ export function deriveOxalicAcidTitrationResult(
   if (!reactionSupported) {
     return {
       reactionSupported,
+      acidMediumSatisfied: acidSupported,
+      reactionTemperatureCondition,
       availableReactiveOxalateMol,
       reactionProgress: null,
       generatedCo2Mol: 0,
@@ -408,6 +451,8 @@ export function deriveOxalicAcidTitrationResult(
 
   return {
     reactionSupported,
+    acidMediumSatisfied: acidSupported,
+    reactionTemperatureCondition,
     availableReactiveOxalateMol,
     reactionProgress,
     generatedCo2Mol,
