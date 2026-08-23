@@ -15,6 +15,7 @@ import type {
   ChemistryMessage,
   ChemistryState,
   CoreActionResult,
+  HeatAction,
   MaterialId,
   TransferLiquidAction,
   VesselState,
@@ -32,7 +33,10 @@ export type CoreOperationMessageCode =
   | 'SAME_SOURCE_DESTINATION'
   | 'INSUFFICIENT_SOURCE_VOLUME'
   | 'DESTINATION_CAPACITY_EXCEEDED'
-  | 'INVALID_RESULTING_STATE';
+  | 'INVALID_RESULTING_STATE'
+  | 'HEATING_NOT_SUPPORTED'
+  | 'INVALID_TARGET_TEMPERATURE'
+  | 'TARGET_BELOW_CURRENT_TEMPERATURE';
 
 function operationMessage(
   code: CoreOperationMessageCode,
@@ -344,6 +348,72 @@ export function transferLiquid(
         [action.targetApparatusId]: nextTarget,
       },
     },
+    messages: [],
+  };
+}
+
+export function heatVessel(
+  configuration: ChemistryConfiguration,
+  state: ChemistryState,
+  action: HeatAction,
+): CoreActionResult {
+  const inputIssue = validateOperationInput(configuration, state);
+  if (inputIssue) {
+    return blocked(state, inputIssue);
+  }
+
+  const apparatus = configuration.apparatus[action.apparatusId];
+  if (!apparatus) {
+    return blocked(state, operationMessage(
+      'UNKNOWN_APPARATUS',
+      'The apparatus is not configured.',
+      [action.apparatusId],
+    ));
+  }
+
+  const vessel = state.vessels[action.apparatusId];
+  if (!vessel) {
+    return blocked(state, operationMessage(
+      'MISSING_VESSEL_STATE',
+      'The apparatus has no vessel state.',
+      [action.apparatusId],
+    ));
+  }
+
+  if (!isFiniteNumber(action.targetTemperatureC)) {
+    return blocked(state, operationMessage(
+      'INVALID_TARGET_TEMPERATURE',
+      'Target temperature must be finite.',
+      [action.apparatusId],
+    ));
+  }
+
+  if (!apparatus.supportsHeating) {
+    return blocked(state, operationMessage(
+      'HEATING_NOT_SUPPORTED',
+      'The apparatus does not support heating.',
+      [action.apparatusId],
+    ));
+  }
+
+  if (action.targetTemperatureC < vessel.temperatureC) {
+    return blocked(state, operationMessage(
+      'TARGET_BELOW_CURRENT_TEMPERATURE',
+      'Heating cannot lower vessel temperature.',
+      [action.apparatusId],
+    ));
+  }
+
+  if (action.targetTemperatureC === vessel.temperatureC) {
+    return { outcome: 'VALID', state, messages: [] };
+  }
+
+  return {
+    outcome: 'VALID',
+    state: withVessel(state, action.apparatusId, {
+      ...vessel,
+      temperatureC: action.targetTemperatureC,
+    }),
     messages: [],
   };
 }

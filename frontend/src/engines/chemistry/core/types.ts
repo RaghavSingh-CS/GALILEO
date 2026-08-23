@@ -60,6 +60,12 @@ export interface TransferLiquidAction {
   readonly volumeL: number;
 }
 
+export interface HeatAction {
+  readonly type: 'heat';
+  readonly apparatusId: ApparatusId;
+  readonly targetTemperatureC: number;
+}
+
 export type CoreAction =
   | AddMaterialAction
   | TransferLiquidAction
@@ -67,11 +73,7 @@ export type CoreAction =
       readonly type: 'mix';
       readonly apparatusId: ApparatusId;
     }
-  | {
-      readonly type: 'heat';
-      readonly apparatusId: ApparatusId;
-      readonly targetTemperatureC: number;
-    };
+  | HeatAction;
 
 export type ActionOutcome = 'VALID' | 'WARNING' | 'BLOCKED';
 export type MessageSeverity = 'info' | 'warning' | 'error';

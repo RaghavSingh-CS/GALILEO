@@ -10,6 +10,7 @@ export type {
   ChemistryState,
   CoreAction,
   CoreActionResult,
+  HeatAction,
   MaterialId,
   MaterialQuantity,
   MessageSeverity,
@@ -25,7 +26,7 @@ export {
 } from './validation';
 export type { StateValidationCode, StateValidationIssue } from './validation';
 
-export { addMaterial, transferLiquid } from './operations';
+export { addMaterial, heatVessel, transferLiquid } from './operations';
 export type { CoreOperationMessageCode } from './operations';
 export { getMolarConcentration } from './derived';
 export {

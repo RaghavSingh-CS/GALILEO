@@ -447,3 +447,45 @@ Stop for Stage 5 review before implementing any Mohr's-salt preparation or volum
 **Pending/next steps**
 
 Stop for Stage 6 review before introducing any volumetric/titration behavior.
+
+### Stage 7 — Generic vessel heating — 2026-08-23 18:12:41 +05:30
+
+**Scope and API**
+
+- Added the focused low-level core operation `heatVessel(configuration, state, action)` and extracted the existing inline heat action contract into the named `HeatAction` type. Both are exported only from the low-level Chemistry core barrel; the subject facade and preparation layers remain unchanged.
+- `VesselState.temperatureC` remains the sole temperature source of truth. Successful heating replaces only the affected vessel, preserves its `contents` reference exactly, changes only `temperatureC`, and retains unrelated vessel references.
+
+**Validation and transition semantics**
+
+- Heating follows the existing core operation boundary: validate `ChemistryConfiguration`, then `ChemistryState`, then action references and numerics. Malformed input, unknown/missing apparatus state, non-finite target, or unsupported heating returns `BLOCKED` with the exact original state.
+- `supportsHeating` is required. Stable codes added are `HEATING_NOT_SUPPORTED`, `INVALID_TARGET_TEMPERATURE`, and `TARGET_BELOW_CURRENT_TEMPERATURE`; existing invariant/reference codes are reused where appropriate.
+- Heat is semantically directional. A target below current temperature is blocked because cooling is not implemented. A target exactly equal to current temperature is a deterministic `VALID` no-op returning the original state reference. A higher finite target is stored exactly without rounding.
+- Negative Celsius values are not rejected based on sign: heating from a lower negative temperature to a higher negative temperature is valid. Very large finite targets are also accepted because the current apparatus definition has no modeled maximum-temperature field and Stage 7 does not invent universal chemical or glassware limits.
+
+**Bounded thermal model**
+
+- Heating directly sets vessel temperature state. No duration, heater power, flame, heat capacity, thermal energy, heat loss, cooling, phase change, or temperature-dependent reaction behavior is modeled.
+- `transferLiquid` remains unchanged: source and destination retain their prior vessel temperatures and no energy balance or weighted thermal equilibration is performed. This is an explicit prototype abstraction, not detailed physical heat-transfer simulation.
+- Standard-solution preparation and named oxalic/Mohr validity remain temperature-independent. Future named experiments may interpret current vessel temperature, but no named temperature requirement exists in core.
+
+**Files added/modified**
+
+- Added `frontend/src/engines/chemistry/__tests__/heating.test.ts`.
+- Modified `frontend/src/engines/chemistry/core/types.ts`.
+- Modified `frontend/src/engines/chemistry/core/operations.ts`.
+- Modified `frontend/src/engines/chemistry/core/index.ts`.
+- Modified `docs/chemistry/DEVELOPMENT_LEDGER.md`.
+
+**Tests and verification**
+
+- Added coverage for successful heating, exact target storage, contents/reference preservation, immutability, equality no-op, lower-target rejection, unsupported/unknown/missing apparatus, all non-finite targets, malformed configuration/state, negative-Celsius heating, and very large finite targets.
+- `npm run typecheck`: passed. `npm test`: 9 files and 203 tests passed. `git diff --check` and new-file whitespace checks passed. Source scans found no named reagent/titration, permanganate, reaction, kinetics, endpoint, UI, or browser dependency behavior in Stage 7.
+
+**Known limitations and deferred work**
+
+- No generic maximum temperature is modeled. Named layers must impose useful/safe ranges if their bounded experiment requires them; actual apparatus thermal ratings are not claimed.
+- Cooling, thermal equilibration, temperature history, observation ontology, kinetics, reactions, titration, endpoints, and UI integration remain unimplemented.
+
+**Pending/next steps**
+
+Stop for Stage 7 review. The next approved stage may introduce generic volumetric/titration mechanics without embedding named permanganate chemistry into core.
