@@ -8,6 +8,14 @@ function measurementScale(tolerance: number): number {
   return scale;
 }
 
+function canonicalizeScaledMeasurement(value: number): number {
+  const nearestInteger = Math.round(value);
+  const representationNoise = Number.EPSILON * 8 * Math.max(1, Math.abs(value));
+  return Math.abs(value - nearestInteger) <= representationNoise
+    ? nearestInteger
+    : value;
+}
+
 /**
  * Compares physical measurements at the decimal resolution expressed by the
  * configured tolerance. This does not use the core IEEE arithmetic tolerance.
@@ -28,5 +36,8 @@ export function isWithinExperimentalTolerance(
   }
 
   const scale = measurementScale(tolerance);
-  return Math.abs(actual * scale - target * scale) <= tolerance * scale;
+  const scaledActual = canonicalizeScaledMeasurement(actual * scale);
+  const scaledTarget = canonicalizeScaledMeasurement(target * scale);
+  const scaledTolerance = canonicalizeScaledMeasurement(tolerance * scale);
+  return Math.abs(scaledActual - scaledTarget) <= scaledTolerance;
 }

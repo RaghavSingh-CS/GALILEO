@@ -404,3 +404,46 @@ Stop for Stage 5 review before implementing any Mohr's-salt preparation or volum
 - With `0.001 L`, both `0.249 L` and `0.251 L` are inclusively on-target; `0.2489 L` and `0.2511 L` are off-target.
 - Added generic helper coverage for zero, `0.01`, and `0.001` tolerances plus named oxalic-acid boundary regressions.
 - `npm run typecheck`: passed. `npm test`: 7 files and 166 tests passed. `git diff --check` and new-file whitespace checks passed. Preparation classification contains no call to the core IEEE helper, and source scans found no Mohr's-salt, titration, heating, reaction, or UI behavior in this correction.
+
+### Stage 6 — Named Mohr's-salt standard preparation — 2026-08-23 18:06:57 +05:30
+
+**Scientific scope and configuration**
+
+- Added the NCERT Class XII ferrous ammonium sulphate quantitative-analysis preparation as the named material `mohrs-salt-hexahydrate`, displayed as `Mohr's salt hexahydrate` and documented by formula `(NH4)2Fe(SO4)2·6H2O` (conventionally also written `FeSO4·(NH4)2SO4·6H2O`).
+- The school-practical molar mass is `392 g/mol`. The named target is `0.05 mol/L` at `0.250 L`, giving `targetMassG: 4.90` from `0.05 × 0.250 × 392`. The 0.1 M/9.8 g alternative is not used for this workflow.
+- The preparation reuses generic `complete-on-mix`, the corrected experimental measurement comparison, `0.01 g` and `0.001 L` GALILEO prototype tolerances, and the existing `0.250 L` mark / `0.300 L` sandbox-capacity convention. Neither the tolerances nor 0.300 L are claimed as official curriculum values or real flask maximums.
+
+**Named acidification condition**
+
+- The NCERT procedure's dropwise dilute sulfuric-acid conditioning is represented by `MohrsSaltPreparationState.acidificationPerformed`, composed around the generic `PreparationState`. No Mohr-specific field or action was added to Chemistry Core or generic preparation types.
+- The named-only `acidify-with-dilute-sulfuric-acid` action records that the required conditioning step occurred. It creates no H2SO4 material amount, invents no acid volume, changes no bulk volume, target amount, temperature, dissolved concentration, or generic preparation history, and performs no acid dissociation, hydrolysis, oxidation, or reaction calculation.
+- Acidification may occur before or after bounded dissolution while preparation remains in progress. Repetition is a stable valid no-op. Every action, including acidification, is blocked after completion with the exact original named state.
+- A completed otherwise usable preparation without acidification is composed to `unusable` with `REQUIRED_ACIDIFICATION_MISSING`. Its mathematical dissolved concentration remains available and unchanged; the bounded model makes no claim about a specifically calculated degradation product or composition.
+
+**Validity and actual-state propagation**
+
+- Generic preparation remains authoritative for in-progress/on-target/off-target/unusable mass, volume, dissolution, contamination, and lifecycle classification. The named layer does not duplicate these calculations; it adds only the completed acidification requirement.
+- Correct acidified preparation contains `4.90 / 392 = 0.0125 mol` in `0.250 L`, deriving `0.05 mol/L`. Wrong mass or actual volume propagates to off-target concentration, while contamination or undissolved target remains unusable. No values are auto-corrected.
+
+**Files added/modified**
+
+- Added `frontend/src/engines/chemistry/preparation/named/mohrs-salt.ts`.
+- Added `frontend/src/engines/chemistry/__tests__/mohrs-salt-preparation.test.ts`.
+- Modified `frontend/src/engines/chemistry/preparation/named/index.ts`.
+- Modified `frontend/src/engines/chemistry/preparation/numeric.ts` to canonicalize only integer-scale decimal conversion noise exposed by the 4.89 g boundary; this does not widen configured experimental tolerance.
+- Modified `docs/chemistry/DEVELOPMENT_LEDGER.md`.
+
+**Tests and verification**
+
+- Added named coverage for material/formula identity, all target constants, definition wiring, correct preparation, bounded dissolution, acidification performed/omitted, concentration independence, idempotence, lifecycle closure, low/high mass and volume, over-mark and over-capacity behavior, undissolved completion, contamination, exact experimental boundaries, and nested immutability.
+- `npm run typecheck`: passed. `npm test`: 8 files and 189 tests passed. `git diff --check` and new-file whitespace checks passed. Explicit generic-core/preparation scans found no Mohr-specific state, action, acidification, or sulfuric-acid reference; Stage 6 source scans found no titration, permanganate reaction, heating, endpoint, UI, or browser dependency behavior.
+
+**Known limitations and deferred work**
+
+- Acidification is an intentionally unquantified named procedural/scientific condition. Exact sulfuric-acid volume or amount, pH, equilibria, hydrolysis, Fe2+ oxidation, and resulting chemical species are not modeled.
+- Complete-on-mix remains a bounded school-lab dissolution assumption without solubility, saturation, rate, or temperature behavior.
+- Titration trials, permanganate redox chemistry, heating, endpoint/equivalence behavior, experiment guidance, UI integration, and registries remain unimplemented.
+
+**Pending/next steps**
+
+Stop for Stage 6 review before introducing any volumetric/titration behavior.
