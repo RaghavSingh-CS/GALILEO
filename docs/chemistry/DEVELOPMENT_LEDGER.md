@@ -266,3 +266,78 @@ Stop for review. Stage 3 may use the corrected material inventories to implement
 **Pending/next steps**
 
 Stop for Stage 3 review. Stage 4 should resolve the approved preparation/mixing boundary and temperature semantics before building higher-level workflows on these generic primitives.
+
+### Stage 4 — Generic solution-preparation mechanics — 2026-08-23 17:34:39 +05:30
+
+**Scope and architecture**
+
+- Added a separate preparation layer with definition, session history, actions, validation, immutable transitions, and derived result classification. It composes `ChemistryState`; it does not copy vessel inventory, volume, or temperature into preparation state.
+- Preparation remains free-form within physical constraints. Measured mass and actual volume are never replaced with target values. A physically valid wrong mass, wrong volume, or configured wrong material is preserved so later classification describes what the student actually prepared.
+- `PreparationState.measuredMassesG` is procedural history. Molar amounts in `ChemistryState` remain scientific inventory and the source of truth for actual mass-equivalent and concentration derivation.
+- The preparation lifecycle is `in-progress` or `complete`. Derived validity is independently classified as `in-progress`, `on-target`, `off-target`, or `unusable`; action outcome remains the separate core `VALID`/`WARNING`/`BLOCKED` concept.
+
+**Scientific and transition decisions**
+
+- `add-material` delegates mass conversion and undissolved addition to core `addMaterial`, while recording the actual measured mass by material ID. Configured wrong material is allowed physically and remains present; a completed preparation containing it is `unusable`.
+- A narrow preparation-only `add-external-solvent-volume` action explicitly adds bulk solvent from a reservoir outside the modeled apparatus system. It creates no water or solvent moles, requires no fake source vessel, enforces capacity, and preserves temperature and every tracked material amount. Provenance-sensitive movement continues to use core `transferLiquid`.
+- Preparation `mix` uses the definition's explicit `dissolutionMode`. `complete-on-mix` moves all undissolved target material into its dissolved inventory when positive bulk liquid exists; `unsupported` blocks this transition. This bounded rule conserves amount, changes no volume or temperature, and never dissolves other materials generically.
+- Completion records the student's chosen current volume; it does not dilute automatically to `targetVolumeL` or correct mass. A completed fully dissolved target-only solution is `on-target` when actual mass-equivalent and volume fall within definition tolerances, otherwise `off-target`. Wrong material, zero volume, missing target material, or remaining target material undissolved makes it `unusable`.
+- Actual concentration is derived only from dissolved target amount divided by actual bulk liquid volume. Target mass and target volume do not enter this calculation. Unusable preparations expose concentration as unavailable (`null`).
+
+**Precision policy**
+
+- Numerical tolerance and experimental tolerance are separate. Core numeric helpers use `8 * Number.EPSILON` scaled to operand magnitude solely to absorb IEEE-754 representation noise. Computed capacity results numerically equal to the boundary are snapped to that boundary; genuine overflow remains blocked and scientific values are not globally rounded.
+- Preparation definitions explicitly provide `massToleranceG` and `volumeToleranceL` in physical units. These configured values alone determine experimental on-target/off-target classification; zero means exact comparison. The IEEE helper is not used by preparation validity.
+- Core `transferLiquid` now uses the same narrow capacity-boundary policy, resolving the documented Stage 3 `0.1 + 0.2` concern.
+
+**Temperature model**
+
+- Preparation addition, dissolution, and completion preserve vessel temperature. Dissolution heat, thermal equilibration, weighted source temperatures, and generic heating remain outside Stage 4. Temperature-dependent chemistry must not rely on these simplified transitions until a later bounded model defines it.
+
+**Files added/modified/deleted**
+
+- Added `frontend/src/engines/chemistry/preparation/types.ts`.
+- Added `frontend/src/engines/chemistry/preparation/validation.ts`.
+- Added `frontend/src/engines/chemistry/preparation/engine.ts`.
+- Added `frontend/src/engines/chemistry/preparation/derived.ts`.
+- Added `frontend/src/engines/chemistry/preparation/index.ts`.
+- Added `frontend/src/engines/chemistry/__tests__/preparation.test.ts`.
+- Modified `frontend/src/engines/chemistry/core/numeric.ts`.
+- Modified `frontend/src/engines/chemistry/core/operations.ts`.
+- Modified `frontend/src/engines/chemistry/core/index.ts`.
+- Modified `frontend/src/engines/chemistry/__tests__/operations.test.ts`.
+- Modified `docs/chemistry/DEVELOPMENT_LEDGER.md`.
+- Removed the obsolete `frontend/src/engines/chemistry/preparation/.gitkeep` placeholder.
+
+**Tests and verification**
+
+- Added generic coverage for definition/session creation, measured-mass history, molar inventory, repeated additions, target-only dissolution, conservation, wrong-material preservation, solvent requirements, unsupported dissolution, bulk volume, capacity boundaries, genuine overflow, actual concentration, lifecycle and validity classifications, experimental versus numerical tolerance, malformed inputs, immutability, structural sharing, and post-completion blocking.
+- `npm run typecheck`: passed.
+- `npm test`: 6 test files passed, 124 tests passed.
+- `git diff --check`: passed. Source scans found no React, Zustand, Konva, React Flow, DOM, UI, named-standard, titration, or reaction logic in the Stage 4 implementation.
+
+**Known limitations and deferred work**
+
+- The bounded model dissolves the definition's complete target inventory when mixed with positive bulk liquid; it has no solubility limit, dissolution rate, molecular solvent model, or heat-of-solution behavior.
+- Bulk solvent addition does not record a source vessel or solvent identity. Workflows needing source-liquid provenance can compose core `transferLiquid` later.
+- No spill, meniscus, balance, reset/repeat, universal workflow engine, or thermal model is introduced.
+- Named standard-solution definitions, including oxalic-acid and Mohr's-salt preparations, are explicitly deferred. Heating, titration, reactions, endpoints, and equivalence behavior remain unimplemented.
+
+**Pending/next steps**
+
+Stop for Stage 4 review before adding any named standard-solution preparation definition.
+
+#### Linked Stage 4 pre-commit correction — 2026-08-23 17:43:50 +05:30
+
+**Decision/change**
+
+- Removed IEEE-754 numerical tolerance from mass and volume target classification. Experimental validity now uses only `abs(actual - target) <= configuredTolerance`.
+- Replaced ambiguous `dissolutionSupported` with `dissolutionMode: 'unsupported' | 'complete-on-mix'`, making complete instantaneous target-only dissolution an explicit bounded model choice.
+- Renamed the solvent action to `add-external-solvent-volume`, explicitly identifying the solvent reservoir as outside the modeled apparatus boundary. The action still changes only bulk volume and preserves temperature and material inventory.
+- Retained actual target inventory converted through configured molar mass as the authority for mass classification. Accumulated measured-mass history remains non-authoritative procedural history.
+- Retained the closed lifecycle: every preparation action after completion is blocked with the exact original state.
+
+**Tests and verification**
+
+- Added coverage for exact zero experimental tolerances, nonzero physical tolerances, malformed tolerances and dissolution modes, repeated/idempotent mixing, dissolved contamination, high mass and volume, inconsistent history, malformed derivation input, every invalid external-solvent numeric input, repeated external additions, inventory/temperature preservation, and capacity excess immediately inside and outside numerical tolerance.
+- `npm run typecheck`: passed. `npm test`: 6 files and 142 tests passed. `git diff --check`: passed. Source scans found no stale action/field names, UI dependencies, named preparation, heating, titration, or reaction behavior; the old field name remains only in this correction history.

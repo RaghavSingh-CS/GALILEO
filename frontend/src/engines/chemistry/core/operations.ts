@@ -1,4 +1,9 @@
-import { isFiniteNumber, isPositiveNumber } from './numeric';
+import {
+  isAtMostWithinFloatingPointTolerance,
+  isFiniteNumber,
+  isPositiveNumber,
+  snapToBoundaryIfNumericallyEqual,
+} from './numeric';
 import {
   validateChemistryConfiguration,
   validateChemistryState,
@@ -258,15 +263,22 @@ export function transferLiquid(
     ));
   }
 
-  const targetVolumeL = target.contents.volumeL + action.volumeL;
-  if (!isFiniteNumber(targetVolumeL)
-    || targetVolumeL > targetApparatus.capacityL) {
+  const rawTargetVolumeL = target.contents.volumeL + action.volumeL;
+  if (!isFiniteNumber(rawTargetVolumeL)
+    || !isAtMostWithinFloatingPointTolerance(
+      rawTargetVolumeL,
+      targetApparatus.capacityL,
+    )) {
     return blocked(state, operationMessage(
       'DESTINATION_CAPACITY_EXCEEDED',
       'The transfer would exceed destination capacity.',
       [action.targetApparatusId],
     ));
   }
+  const targetVolumeL = snapToBoundaryIfNumericallyEqual(
+    rawTargetVolumeL,
+    targetApparatus.capacityL,
+  );
 
   const isFullTransfer = action.volumeL === source.contents.volumeL;
   const fraction = action.volumeL / source.contents.volumeL;

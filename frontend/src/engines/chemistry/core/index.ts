@@ -28,3 +28,8 @@ export type { StateValidationCode, StateValidationIssue } from './validation';
 export { addMaterial, transferLiquid } from './operations';
 export type { CoreOperationMessageCode } from './operations';
 export { getMolarConcentration } from './derived';
+export {
+  floatingPointTolerance,
+  isAtMostWithinFloatingPointTolerance,
+  snapToBoundaryIfNumericallyEqual,
+} from './numeric';

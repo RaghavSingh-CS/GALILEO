@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addMaterial, transferLiquid } from '../core';
+import { addMaterial, floatingPointTolerance, transferLiquid } from '../core';
 import type {
   AddMaterialAction,
   ChemistryConfiguration,
@@ -380,6 +380,44 @@ describe('transferLiquid', () => {
     const result = transferLiquid(configuration, state, transferAction({ volumeL: 0.08 }));
     expect(result.outcome).toBe('VALID');
     expect(result.state.vessels.target!.contents.volumeL).toBe(0.1);
+  });
+
+  it('accepts a decimal exact-capacity boundary affected by binary floating point', () => {
+    const state = makeState();
+    const decimalConfiguration: ChemistryConfiguration = {
+      ...configuration,
+      apparatus: {
+        ...configuration.apparatus,
+        target: { ...configuration.apparatus.target!, capacityL: 0.3 },
+      },
+    };
+    const decimalState: ChemistryState = {
+      ...state,
+      vessels: {
+        ...state.vessels,
+        source: {
+          ...state.vessels.source!,
+          contents: { ...state.vessels.source!.contents, volumeL: 0.2 },
+        },
+        target: {
+          ...state.vessels.target!,
+          contents: { ...state.vessels.target!.contents, volumeL: 0.1 },
+        },
+      },
+    };
+    const exact = transferLiquid(
+      decimalConfiguration,
+      decimalState,
+      transferAction({ volumeL: 0.2 }),
+    );
+    expect(exact.outcome).toBe('VALID');
+    expect(exact.state.vessels.target!.contents.volumeL).toBe(0.3);
+    const volumeBefore = 0.2 + 0.1;
+    const volumeAfter = exact.state.vessels.source!.contents.volumeL
+      + exact.state.vessels.target!.contents.volumeL;
+    expect(Math.abs(volumeAfter - volumeBefore)).toBeLessThanOrEqual(
+      floatingPointTolerance(volumeAfter, volumeBefore),
+    );
   });
 
   it.each([0, -0.01, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
