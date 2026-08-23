@@ -226,3 +226,43 @@ Nested IDs duplicated record identity and would have required every immutable op
 **Pending/next steps**
 
 Stop for review. Stage 3 may use the corrected material inventories to implement generic operations, while leaving named preparation and titration behavior to their approved higher layers.
+
+### Stage 3 — Generic material addition, liquid transfer, and derived concentration — 2026-08-23 17:14:37 +05:30
+
+**Scope and decisions**
+
+- Added immutable `addMaterial` and `transferLiquid` core operations plus the pure `getMolarConcentration` derived helper. They are exported from the low-level core module but are not yet exposed through the Chemistry subsystem façade.
+- Material addition accepts mol or mass input. Mass is converted with the configured actual material molar mass, and all added material enters undissolved inventory. Addition does not change liquid volume, imply dissolution, or model solid displacement.
+- Liquid transfer moves bulk liquid volume and every dissolved material proportionally. Undissolved inventory remains in its original vessel. Bulk solvent is represented by volume and is not manufactured as a material record.
+- Molar concentration is derived as dissolved amount divided by bulk liquid volume. Missing dissolved material means zero; zero liquid volume returns `null` rather than infinity or an invented value.
+- Successful outputs omit exact-zero and negative-zero inventory entries while retaining nonzero values without tolerance-based truncation or rounding.
+- Blocked operations are atomic and return the original state reference. Successful operations preserve input objects, conserve transferred volume and dissolved material, and retain unrelated vessel references.
+- Every core operation now validates the supplied configuration first and then validates the supplied state against it before action-specific checks. Invalid configuration or state produces a concise `BLOCKED` result with the exact original state reference, so operations no longer rely on an undocumented prevalidated-input assumption.
+
+**Files added/modified**
+
+- `frontend/src/engines/chemistry/core/operations.ts`
+- `frontend/src/engines/chemistry/core/derived.ts`
+- `frontend/src/engines/chemistry/core/types.ts`
+- `frontend/src/engines/chemistry/core/index.ts`
+- `frontend/src/engines/chemistry/index.ts`
+- `frontend/src/engines/chemistry/__tests__/operations.test.ts`
+- `frontend/src/engines/chemistry/__tests__/derived.test.ts`
+- `docs/chemistry/DEVELOPMENT_LEDGER.md`
+
+**Tests and verification**
+
+- Added coverage for mol and mass addition, invalid inputs and references, malformed configuration/state rejection at the operation boundary, negative infinity, accumulated-amount overflow, exact-zero canonicalization, capacity and source-volume boundaries, full and partial multi-material transfer, destination accumulation, undissolved preservation, temperature preservation, conservation, nested-record immutability, stable blocked outcomes, bulk-solvent policy, and concentration edge cases.
+- `npm run typecheck`: passed under the DOM-free ES2023 TypeScript configuration.
+- `npm test`: 5 test files passed, 92 tests passed.
+- `git diff --check`: passed. The Stage 3 source scan found no React/UI dependency or preparation, titration, or reaction behavior.
+
+**Known limitations and deferred work**
+
+- Transfer preserves the source's previous temperature and the destination's previous temperature independently. This is a bounded Stage 3 assumption; no thermal equilibration is modeled, and temperature/mixing/heating semantics must be resolved before temperature-dependent chemistry relies on transfer results.
+- Binary floating-point can make a mathematically exact decimal capacity boundary such as `0.1 + 0.2` appear slightly greater than `0.3`. Stage 3 does not add an epsilon or silently round inputs; the final policy is deferred until volumetric measurement precision and experimental action granularity are defined.
+- Generic `mix` and `heat` action contracts remain unimplemented. Dissolution, standard-solution preparation, named experiments, titration, reactions, endpoint/equivalence behavior, UI, and runtime integration remain deferred to approved later stages.
+
+**Pending/next steps**
+
+Stop for Stage 3 review. Stage 4 should resolve the approved preparation/mixing boundary and temperature semantics before building higher-level workflows on these generic primitives.

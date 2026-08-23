@@ -1,5 +1,6 @@
 export type {
   ActionOutcome,
+  AddMaterialAction,
   ApparatusDefinition,
   ApparatusId,
   ApparatusKind,
@@ -13,6 +14,7 @@ export type {
   MaterialQuantity,
   MessageSeverity,
   MixtureState,
+  TransferLiquidAction,
   VesselState,
 } from './types';
 
@@ -22,3 +24,7 @@ export {
   validateChemistryState,
 } from './validation';
 export type { StateValidationCode, StateValidationIssue } from './validation';
+
+export { addMaterial, transferLiquid } from './operations';
+export type { CoreOperationMessageCode } from './operations';
+export { getMolarConcentration } from './derived';

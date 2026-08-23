@@ -46,19 +46,23 @@ export type MaterialQuantity =
   | { readonly kind: 'mass'; readonly massG: number }
   | { readonly kind: 'amount'; readonly amountMol: number };
 
+export interface AddMaterialAction {
+  readonly type: 'add-material';
+  readonly targetApparatusId: ApparatusId;
+  readonly materialId: MaterialId;
+  readonly quantity: MaterialQuantity;
+}
+
+export interface TransferLiquidAction {
+  readonly type: 'transfer-liquid';
+  readonly sourceApparatusId: ApparatusId;
+  readonly targetApparatusId: ApparatusId;
+  readonly volumeL: number;
+}
+
 export type CoreAction =
-  | {
-      readonly type: 'add-material';
-      readonly targetApparatusId: ApparatusId;
-      readonly materialId: MaterialId;
-      readonly quantity: MaterialQuantity;
-    }
-  | {
-      readonly type: 'transfer-liquid';
-      readonly sourceApparatusId: ApparatusId;
-      readonly targetApparatusId: ApparatusId;
-      readonly volumeL: number;
-    }
+  | AddMaterialAction
+  | TransferLiquidAction
   | {
       readonly type: 'mix';
       readonly apparatusId: ApparatusId;
