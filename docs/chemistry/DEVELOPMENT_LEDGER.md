@@ -489,3 +489,39 @@ Stop for Stage 6 review before introducing any volumetric/titration behavior.
 **Pending/next steps**
 
 Stop for Stage 7 review. The next approved stage may introduce generic volumetric/titration mechanics without embedding named permanganate chemistry into core.
+
+### Stage 8 — Generic volumetric mechanics — 2026-08-23 18:21:00 +05:30
+
+**Boundary and state design**
+
+- Added a reusable volumetric layer that records instrument readings and trial lifecycle while delegating actual liquid/material movement to Chemistry core. It contains no reaction, reagent, endpoint, equivalence, or scientific trial-quality interpretation.
+- `VolumetricTrialState` stores only lifecycle status plus initial/current burette readings in millilitres. Delivered volume is derived as current minus initial, avoiding a third mutually derivable stored value. Arbitrary valid initial readings are supported, including nonzero starts between repeated trials.
+- Trial state remains separate from `ChemistryState`, `VesselState`, and `MixtureState`. `VolumetricState` composes Chemistry state with one current trial solely to make delivery transitions atomic and JSON-friendly.
+
+**Burette and unit integration**
+
+- `VolumetricConfiguration` references the configured burette and delivery-target apparatus IDs. The burette's existing core `ApparatusDefinition.capacityL` is the single physical/range source of truth; the volumetric layer converts it to the maximum displayed reading in mL and does not duplicate a `maxReadingMl` value.
+- Actual burette contents, dissolved inventory, and undissolved inventory remain solely in its core vessel state. `deliverFromBurette` validates the reading transition before calling core `transferLiquid`; a rejected reading leaves Chemistry state untouched, and a rejected core transfer leaves the reading untouched with the exact original composite state reference.
+- Chemistry core volume remains litres and displayed volumetric readings remain millilitres. `mlToL` and `lToMl` provide the explicit `1 mL = 0.001 L` conversion without measurement rounding or instrument-resolution snapping.
+
+**Lifecycle and APIs**
+
+- Added `createVolumetricState`, `startVolumetricTrial`, `deliverFromBurette`, `completeVolumetricTrial`, and `getDeliveredVolumeMl`, plus focused configuration/state validation and unit helpers.
+- Completion means only that the learner ended mechanical delivery. It freezes readings and blocks later delivery; it does not assert endpoint, equivalence, concordance, overshoot, validity, or usability.
+- Repeat/history management is intentionally external: callers retain a completed trial if desired, wrap the retained Chemistry state in a fresh `createVolumetricState`, and start at any valid new burette reading. No trial arrays, averaging, or concordance logic were introduced.
+
+**Measured aliquot decision**
+
+- No separate pipette or measured-transfer operation was added. Existing core `transferLiquid`, combined with `mlToL`, already enforces positive finite volume, source availability, destination capacity, proportional dissolved-material movement, undissolved-material retention, immutability, and atomic failure. A duplicate wrapper would add no instrument state or mechanics at this stage.
+
+**Files and verification**
+
+- Added `frontend/src/engines/chemistry/volumetric/{types,validation,engine,derived,numeric,index}.ts` and replaced the directory placeholder.
+- Added `frontend/src/engines/chemistry/__tests__/volumetric.test.ts` covering zero/arbitrary/nonzero trial starts, invalid readings, derived delivery, repeated delivery, exact and exceeded range, invalid delivery values, core inventory/proportional transfer behavior, undissolved retention, source/destination atomic failures, completion, post-completion blocking, repeats, structural sharing, and explicit unit conversion.
+- `npm run typecheck`: passed. `npm test`: 10 files and 229 tests passed.
+
+**Assumptions, limitations, and next stage**
+
+- A core burette vessel is assumed to have been filled through ordinary core composition before delivery. Filling technique, meniscus reading, droplets, rinsing, precision increments, and refill behavior are not simulated.
+- One configuration targets one receiving apparatus during a trial. Higher layers may compose generic measured aliquot transfer and burette delivery around their own apparatus topology without changing this layer.
+- The mechanical API can be reused unchanged for Mohr's-salt/permanganate, oxalic-acid/permanganate, or future acid-base trials because it knows only apparatus IDs, volumes, readings, and lifecycle. Stage 9 may add named scientific interpretation above this boundary without moving it into generic volumetric code.
