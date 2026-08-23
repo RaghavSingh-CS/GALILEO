@@ -24,6 +24,9 @@ The application relies heavily on Zustand for decoupled, scalable state manageme
 ### Workspace & Experiments
 The `Workspace` view is the core of the application, dynamically rendering different experiments based on the `registry.ts` in `/experiments`. Experiments define their inputs, variables, and formulas for calculating outcomes.
 
+### Simulation Pacing & Timed Steps
+Experiments support "Continuous Auto-Sweep" or timed step data collection. The pacing of these timed steps (e.g., fast, standard, slow) is controlled by the `settings.ts` store and executed within the experiment engine. This allows simulated physics and chemistry variables to update over time, simulating real-world sensor data collection.
+
 ### AI Integration
 The Express server acts as a proxy to the Gemini API (`@google/genai`). The frontend communicates with this proxy rather than exposing the API key directly in the browser. The `settings.ts` store controls how verbose or pedagogical the AI responses are.
 
