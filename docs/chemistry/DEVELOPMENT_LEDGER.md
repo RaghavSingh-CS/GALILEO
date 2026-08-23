@@ -565,3 +565,43 @@ Stop for Stage 7 review. The next approved stage may introduce generic volumetri
 - The model intentionally has no colour intensity, persistence timing, fading, droplet mechanics, generic indicator chemistry, reaction products, acidic-medium validation, or reaction-state transition.
 - A zero configured allowance is structurally valid but makes every positive excess overshot; named definitions wanting an observable endpoint band should configure a positive allowance.
 - The next named Mohr's-salt titration stage must derive reaction progress from actual analyte/titrant state, define its own acidic-medium and stoichiometric rules, choose and disclaim its endpoint allowance, and preserve the separation between reaction assessment, shared observation, and mechanical completion.
+
+### Stage 10 — Named Mohr's-salt permanganate titration — 2026-08-23 18:36:00 +05:30
+
+**Scientific workflow and named boundary**
+
+- Added the first named reaction/titration engine for permanganate against standard ferrous ammonium sulphate (Mohr's-salt) solution in sulphuric-acid medium. The bounded NCERT workflow uses a `10 mL` aliquot of nominal `0.05 mol/L` standard and approximately `5 mL` of `1.0 mol/L` sulphuric acid in the conical flask.
+- The named reaction is `MnO4- + 5 Fe2+ + 8 H+ → Mn2+ + 5 Fe3+ + 4 H2O`. Its `1:5` permanganate/reactive-iron stoichiometry and the mapping `1 mol dissolved Mohr's salt → 1 mol reactive Fe2+` exist only in the named Mohr engine.
+- No heating prerequisite or temperature threshold is applied. Air oxidation, kinetics, pH, acid equilibria, ionic strength, alternative products, and reaction-product inventories remain outside this bounded model.
+
+**Actual-state setup and acid model**
+
+- `createMohrsSaltTitration` composes the completed preparation vessel with a named burette, conical flask, and acid-source vessel. `prepareMohrsSaltTitrationAliquot` delegates the actual `10 mL` move to core `transferLiquid` through `mlToL(10)`; it never creates nominal analyte moles.
+- The titration acid addition is separate from the Stage 6 preparation-conditioning flag. The acid source contains actual dissolved `sulfuric-acid` inventory: `0.005 L × 1.0 mol/L = 0.005 mol`. The named bounded criterion requires at least `0.005 mol` in the trial flask. It does not model dissociation or claim that this is a general acid-reaction engine.
+- Missing or insufficient titration acid does not block physically possible burette delivery. It makes intended quantitative reaction interpretation unsupported and the named result unusable, while preserving all transferred inventory.
+
+**Reaction progress and reuse**
+
+- Reaction progress is derived without mutating raw reactants or inventing products. Actual reactive iron is the dissolved Mohr-salt amount currently transferred into the trial flask. Maximum consumable permanganate is actual reactive iron divided by five; consumption is the lesser of actual delivered permanganate and that capacity, and remaining capacity is the positive remainder.
+- Stage 8 remains responsible for arbitrary initial readings, incremental delivery, actual liquid/material transfer, completion, immutability, and range validation. Stage 9 remains responsible for decolorized/endpoint/overshot classification. The named layer neither duplicates nor forks those mechanics.
+- Off-target but chemically usable preparation proceeds using its actual aliquot inventory. Unusable preparation provenance, including omitted preparation conditioning or unusable generic preparation state, makes the named quantitative result unusable rather than auto-correcting it.
+
+**Hidden titrant truth, endpoint assumption, and learner result**
+
+- The prototype burette is filled with `0.050 L` of internally configured `0.01 mol/L` KMnO4. This is hidden simulation truth, not a learner-known value or an NCERT-prescribed unknown concentration. For a correct aliquot, actual `0.0005 mol Fe2+` gives a derived `0.0001 mol` permanganate capacity and approximately `10 mL` equivalence scale.
+- The named endpoint allowance is `5×10^-7 mol`, corresponding to `0.05 mL` of the prototype `0.01 mol/L` titrant. It is a deterministic GALILEO display/simulation assumption for slight persistent excess, not an official NCERT/CBSE definition of permanent light pink.
+- A learner-calculated result is returned only for a mechanically completed endpoint trial and uses the intended standard assumption: `(0.05 mol/L × 0.010 L) / (5 × recorded titre L)`. It does not silently substitute actual off-target analyte concentration. Consequently a wrongly prepared but chemically usable standard changes actual equivalence while producing a learner result that differs from hidden actual titrant truth for the correct educational reason.
+
+**Usability, files, and verification**
+
+- Named usability is `in-progress`, `usable`, `overshot`, `stopped-early`, or `unusable`. Only an acid-supported, non-unusable source completed at shared endpoint is accepted as `usable`; early, overshot, missing-acid, and unusable-source trials return no learner concentration.
+- Added `frontend/src/engines/chemistry/permanganate/named/mohrs-salt.ts` and its named barrel, plus `frontend/src/engines/chemistry/__tests__/mohrs-salt-titration.test.ts`.
+- Added focused facade APIs for creation, aliquot transfer, acid transfer, start, incremental delivery, completion, reaction-progress derivation, and named result derivation.
+- Tests cover centralized constants, actual setup inventories, actual aliquot transfer, correct `0.0005 mol` reactive iron and `0.0001 mol` capacity, limiting conditions, incremental readings, equivalence/endpoint/overshoot, independent completion, missing/insufficient acid, unusable preparation, off-target propagation, hidden versus learner result, acceptance rules, and immutability.
+- `npm run typecheck`: passed. `npm test`: 12 files and 259 tests passed.
+
+**Limitations and next stage**
+
+- Reaction progress is an instantaneous derived interpretation of transferred starting inventory. No products, rate, mixing delay, acid consumption, air oxidation, colour intensity, persistence time, or concordance/averaging are modeled.
+- The named factory currently uses the canonical Mohr preparation configuration and fixed prototype apparatus. Higher experiment composition may expose controlled setup variants later without moving named chemistry into shared layers.
+- The next oxalic-acid titration must supply its own stoichiometry, temperature prerequisite, acid policy, and reaction progress while reusing generic volumetric and shared permanganate observation unchanged.
