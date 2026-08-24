@@ -1,6 +1,27 @@
-import * as math from 'mathjs';
-import { ElectricalGraph, MNAResult } from './types';
+/**
+ * solver.ts — Modified Nodal Analysis (MNA) solver.
+ *
+ * PHY-009: Reachability from ground is now computed from conductive branches
+ *   only (voltmeters excluded) before activeBranches is determined. This
+ *   prevents voltmeter-linked floating nodes from entering the MNA system and
+ *   causing avoidable SINGULAR_MATRIX / DEGENERATE_TOPOLOGY results.
+ *
+ * PHY-022: solveMNA is an internal function that MAY throw 'SINGULAR_MATRIX'.
+ *   Do NOT call it directly from UI code. Use solveCircuit() in index.ts,
+ *   which is the safe, non-throwing public boundary for the engine.
+ */
 
+import * as math from 'mathjs';
+import type { ElectricalGraph, MNAResult } from './types';
+
+/**
+ * @internal
+ * Solves the circuit using Modified Nodal Analysis.
+ *
+ * @throws {Error} with message 'SINGULAR_MATRIX' if the system is numerically
+ *   singular. This is an internal exception. Callers MUST catch it.
+ *   External code should call solveCircuit() in index.ts instead.
+ */
 export function solveMNA(graph: ElectricalGraph): MNAResult {
   // If there is no ground node, we can't solve anything
   if (!graph.groundNodeId || graph.nodes.length === 0) {
@@ -10,22 +31,26 @@ export function solveMNA(graph: ElectricalGraph): MNAResult {
     };
   }
 
-  // Find all reachable nodes from ground
+  // PHY-009: Build reachability adjacency from CONDUCTIVE branches only
+  // (exclude voltmeters). This prevents ideal voltmeter links from pulling
+  // floating nodes into the active MNA system.
+  const conductiveAdj = new Map<string, string[]>();
+  for (const b of graph.branches) {
+    if (b.type === 'voltmeter') continue; // non-conductive — skip for reachability
+    if (!conductiveAdj.has(b.nodeA)) conductiveAdj.set(b.nodeA, []);
+    if (!conductiveAdj.has(b.nodeB)) conductiveAdj.set(b.nodeB, []);
+    conductiveAdj.get(b.nodeA)!.push(b.nodeB);
+    conductiveAdj.get(b.nodeB)!.push(b.nodeA);
+  }
+
+  // Find all nodes reachable from ground via conductive paths
   const reachableNodes = new Set<string>();
   const queue = [graph.groundNodeId];
   reachableNodes.add(graph.groundNodeId);
 
-  const adj = new Map<string, string[]>();
-  for (const b of graph.branches) {
-    if (!adj.has(b.nodeA)) adj.set(b.nodeA, []);
-    if (!adj.has(b.nodeB)) adj.set(b.nodeB, []);
-    adj.get(b.nodeA)!.push(b.nodeB);
-    adj.get(b.nodeB)!.push(b.nodeA);
-  }
-
   while (queue.length > 0) {
     const curr = queue.shift()!;
-    for (const neighbor of adj.get(curr) || []) {
+    for (const neighbor of conductiveAdj.get(curr) || []) {
       if (!reachableNodes.has(neighbor)) {
         reachableNodes.add(neighbor);
         queue.push(neighbor);
@@ -34,17 +59,19 @@ export function solveMNA(graph: ElectricalGraph): MNAResult {
   }
 
   // 1. Filter branches (exclude voltmeters AND unreachable components)
-  const activeBranches = graph.branches.filter(b => b.type !== 'voltmeter' && reachableNodes.has(b.nodeA) && reachableNodes.has(b.nodeB));
+  const activeBranches = graph.branches.filter(
+    b => b.type !== 'voltmeter' && reachableNodes.has(b.nodeA) && reachableNodes.has(b.nodeB)
+  );
 
   // 2. Identify voltage source branches (batteries, ammeters)
   const vSources = activeBranches.filter(b => b.type === 'battery' || b.type === 'ammeter');
-  
+
   const M = vSources.length;
 
   // 3. Build node index map (excluding ground)
   const nonGroundNodes = graph.nodes.filter(n => !n.isGround && reachableNodes.has(n.id));
   const N = nonGroundNodes.length;
-  
+
   const nodeIndexMap = new Map<string, number>();
   nonGroundNodes.forEach((node, idx) => {
     nodeIndexMap.set(node.id, idx);
@@ -59,7 +86,6 @@ export function solveMNA(graph: ElectricalGraph): MNAResult {
   }
 
   // 4. Initialize matrices
-  // We use standard JS arrays, then convert to mathjs matrix for lusolve
   const A: number[][] = Array(N + M).fill(0).map(() => Array(N + M).fill(0));
   const z: number[] = Array(N + M).fill(0);
 
@@ -107,7 +133,7 @@ export function solveMNA(graph: ElectricalGraph): MNAResult {
   // 7. Solve A * x = z
   let x: number[];
   try {
-    // math.lusolve returns a 2D array (column vector). We flat it.
+    // math.lusolve returns a 2D array (column vector). We flatten it.
     const result = math.lusolve(A, z) as number[][] | number[];
     if (Array.isArray(result) && Array.isArray(result[0])) {
       x = (result as number[][]).map(r => r[0]);

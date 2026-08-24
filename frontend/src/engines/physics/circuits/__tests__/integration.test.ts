@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { solveCircuit } from '../index';
-import { CircuitState, BatteryComponent, ResistorComponent, AmmeterComponent, VoltmeterComponent, VariableResistorComponent, Wire } from '../types';
+import type { CircuitState, BatteryComponent, ResistorComponent, AmmeterComponent, VoltmeterComponent, VariableResistorComponent, Wire } from '../types';
 
 describe('Solver Integration', () => {
   const makeBattery = (id: string, voltage: number): BatteryComponent => ({
@@ -37,15 +37,14 @@ describe('Solver Integration', () => {
         makeWire('w2', r1.terminals[1].id, b1.terminals[1].id)
       ]
     };
-    
+
     const result = solveCircuit(state);
     expect(result.success).toBe(true);
-    
+
     const r1Branch = result.branchData.find(b => b.componentId === 'r1')!;
     const b1Branch = result.branchData.find(b => b.componentId === 'b1')!;
     expect(closeTo(r1Branch.current, 0.05)).toBe(true);
     expect(closeTo(b1Branch.current, 0.05)).toBe(true);
-    // voltage drops from a to b, so V_a - V_b is 5V
     expect(closeTo(r1Branch.voltage, 5)).toBe(true);
   });
 
@@ -61,14 +60,13 @@ describe('Solver Integration', () => {
         makeWire('w3', r2.terminals[1].id, b1.terminals[1].id)
       ]
     };
-    
+
     const result = solveCircuit(state);
     expect(result.success).toBe(true);
-    
+
     const r1Branch = result.branchData.find(b => b.componentId === 'r1')!;
     const r2Branch = result.branchData.find(b => b.componentId === 'r2')!;
-    
-    // I = 10 / 300 = 0.033333333...
+
     expect(closeTo(r1Branch.current, 10 / 300)).toBe(true);
     expect(closeTo(r2Branch.current, 10 / 300)).toBe(true);
     expect(closeTo(r1Branch.voltage, 100 * (10 / 300))).toBe(true); // 3.33V
@@ -88,14 +86,14 @@ describe('Solver Integration', () => {
         makeWire('w4', r2.terminals[1].id, b1.terminals[1].id)
       ]
     };
-    
+
     const result = solveCircuit(state);
     expect(result.success).toBe(true);
-    
+
     const b1Branch = result.branchData.find(b => b.componentId === 'b1')!;
     const r1Branch = result.branchData.find(b => b.componentId === 'r1')!;
     const r2Branch = result.branchData.find(b => b.componentId === 'r2')!;
-    
+
     expect(closeTo(r1Branch.voltage, 10)).toBe(true);
     expect(closeTo(r2Branch.voltage, 10)).toBe(true);
     expect(closeTo(r1Branch.current, 0.1)).toBe(true);
@@ -126,13 +124,14 @@ describe('Solver Integration', () => {
 
     const aReading = result.readings.find(r => r.type === 'ammeter')!;
     const vReading = result.readings.find(r => r.type === 'voltmeter')!;
-    
+
     expect(aReading).toBeDefined();
     expect(vReading).toBeDefined();
 
     expect(closeTo(aReading.value, 0.1)).toBe(true); // 10V / 100Ω = 0.1A
     expect(closeTo(vReading.value, 10)).toBe(true); // Voltage across R1 is 10V
   });
+
   it('Variable resistor solve', () => {
     const b1 = makeBattery('b1', 10);
     const vr1 = {
@@ -146,7 +145,7 @@ describe('Solver Integration', () => {
         { id: 'vr1:b', componentId: 'vr1', role: 'b' }
       ]
     } as VariableResistorComponent;
-    
+
     const state: CircuitState = {
       components: [b1, vr1],
       wires: [
@@ -154,7 +153,7 @@ describe('Solver Integration', () => {
         makeWire('w2', vr1.terminals[1].id, b1.terminals[1].id)
       ]
     };
-    
+
     const result = solveCircuit(state);
     expect(result.success).toBe(true);
     const vr1Branch = result.branchData.find(b => b.componentId === 'vr1')!;
@@ -163,9 +162,9 @@ describe('Solver Integration', () => {
 
   it('Multiple batteries in series', () => {
     const b1 = makeBattery('b1', 5);
-    const b2 = makeBattery('b2', 5); // Connect positive of b2 to negative of b1
+    const b2 = makeBattery('b2', 5);
     const r1 = makeResistor('r1', 100);
-    
+
     const state: CircuitState = {
       components: [b1, b2, r1],
       wires: [
@@ -174,21 +173,23 @@ describe('Solver Integration', () => {
         makeWire('w3', r1.terminals[1].id, b2.terminals[1].id)
       ]
     };
-    
+
     const result = solveCircuit(state);
     expect(result.success).toBe(true);
     const r1Branch = result.branchData.find(b => b.componentId === 'r1')!;
     expect(closeTo(r1Branch.current, 0.1)).toBe(true); // 10V / 100Ω = 0.1A
   });
 
-  it('DEGENERATE_TOPOLOGY error when matrix is singular', () => {
-    // Two ammeters in series across a battery.
-    // The validator checks for a single ammeter short, but two ammeters in series will bypass that specific check
-    // and reach the solver, which will fail to solve the singular MNA matrix.
+  // ── PHY-007: Two ammeters in series across battery → SHORT_CIRCUIT not DEGENERATE_TOPOLOGY
+
+  it('PHY-007 SHORT_CIRCUIT: two ammeters in series across battery returns SHORT_CIRCUIT', () => {
+    // Previously this fell through to DEGENERATE_TOPOLOGY because only a single
+    // ammeter directly parallel to battery was detected. Now the full zero-resistance
+    // BFS detects multi-element short paths.
     const b1 = makeBattery('b1', 5);
     const a1 = makeAmmeter('a1');
     const a2 = makeAmmeter('a2');
-    
+
     const state: CircuitState = {
       components: [b1, a1, a2],
       wires: [
@@ -197,9 +198,47 @@ describe('Solver Integration', () => {
         makeWire('w3', a2.terminals[1].id, b1.terminals[1].id)
       ]
     };
-    
+
     const result = solveCircuit(state);
     expect(result.success).toBe(false);
-    expect(result.validation.some(v => v.ruleId === 'DEGENERATE_TOPOLOGY')).toBe(true);
+    // Must return SHORT_CIRCUIT with specific component IDs, not generic DEGENERATE_TOPOLOGY
+    expect(result.validation.some(v => v.ruleId === 'SHORT_CIRCUIT')).toBe(true);
+    expect(result.validation.some(v => v.ruleId === 'DEGENERATE_TOPOLOGY')).toBe(false);
+  });
+
+  // ── PHY-001: Dangling wire endpoint integration test ─────────────────────
+
+  it('PHY-001 DANGLING_WIRE: wire referencing unknown terminal returns error', () => {
+    const b1 = makeBattery('b1', 9);
+    const r1 = makeResistor('r1', 100);
+    const state: CircuitState = {
+      components: [b1, r1],
+      wires: [
+        makeWire('w1', b1.terminals[0].id, r1.terminals[0].id),
+        makeWire('w2', r1.terminals[1].id, b1.terminals[1].id),
+        makeWire('stale', 'deleted_component:a', r1.terminals[0].id) // stale adapter edge
+      ]
+    };
+
+    const result = solveCircuit(state);
+    expect(result.success).toBe(false);
+    expect(result.validation.some(v => v.ruleId === 'DANGLING_WIRE')).toBe(true);
+    expect(result.validation.find(v => v.ruleId === 'DANGLING_WIRE')!.message).toContain('stale');
+  });
+
+  // ── PHY-024: Malformed runtime input is contained ────────────────────────
+
+  it('PHY-024 MALFORMED_INPUT: solveCircuit does not throw on null input', () => {
+    // Cast to bypass TypeScript — simulating untrusted runtime data
+    expect(() => solveCircuit(null as unknown as CircuitState)).not.toThrow();
+    const result = solveCircuit(null as unknown as CircuitState);
+    expect(result.success).toBe(false);
+    expect(result.validation.some(v => v.ruleId === 'MALFORMED_INPUT')).toBe(true);
+  });
+
+  it('PHY-024 MALFORMED_INPUT: solveCircuit does not throw on object with missing arrays', () => {
+    const result = solveCircuit({} as unknown as CircuitState);
+    expect(result.success).toBe(false);
+    expect(result.validation.some(v => v.ruleId === 'MALFORMED_INPUT')).toBe(true);
   });
 });

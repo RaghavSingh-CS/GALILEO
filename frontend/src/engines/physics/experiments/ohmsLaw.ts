@@ -1,4 +1,4 @@
-import { ExperimentDefinition } from '../circuits/types';
+import type { ExperimentDefinition } from '../circuits/types';
 
 export const ohmsLawExperiment: ExperimentDefinition = {
   id: 'ohms-law',

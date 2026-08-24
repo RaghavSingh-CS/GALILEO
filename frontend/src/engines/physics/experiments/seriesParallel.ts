@@ -1,4 +1,4 @@
-import { ExperimentDefinition } from '../circuits/types';
+import type { ExperimentDefinition } from '../circuits/types';
 
 export const seriesParallelExperiment: ExperimentDefinition = {
   id: 'series-parallel',

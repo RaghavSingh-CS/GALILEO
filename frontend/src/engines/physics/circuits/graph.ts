@@ -1,4 +1,17 @@
-import { CircuitState, ElectricalGraph, ElectricalNode, Branch, ComponentType, Component } from './types';
+/**
+ * graph.ts — Builds ElectricalGraph from CircuitState.
+ *
+ * PHY-001: Dangling wire endpoints are now detected and returned as
+ *   DANGLING_WIRE ValidationMessages rather than silently ignored.
+ *   buildGraph returns { graph, messages } so callers can surface these.
+ *
+ * PHY-008: getConductiveComponents() traverses only non-voltmeter branches,
+ *   giving a topology view that excludes ideal voltmeter links. Use this in
+ *   the validator for disconnected/active-subgraph checks so voltmeter-only
+ *   connections never mark a subgraph as electrically active.
+ */
+
+import type { CircuitState, ElectricalGraph, ElectricalNode, Branch, ValidationMessage } from './types';
 
 class UnionFind {
   private parent: Map<string, string>;
@@ -60,8 +73,16 @@ class UnionFind {
   }
 }
 
-export function buildGraph(state: CircuitState): ElectricalGraph {
+export interface BuildGraphResult {
+  graph: ElectricalGraph;
+  /** PHY-001: DANGLING_WIRE messages for wires with unknown endpoints. */
+  messages: ValidationMessage[];
+}
+
+export function buildGraph(state: CircuitState): BuildGraphResult {
+  const messages: ValidationMessage[] = [];
   const terminalIds: string[] = [];
+
   for (const comp of state.components) {
     for (const term of comp.terminals) {
       terminalIds.push(term.id);
@@ -69,12 +90,29 @@ export function buildGraph(state: CircuitState): ElectricalGraph {
   }
 
   const uf = new UnionFind(terminalIds);
-
   const terminalSet = new Set(terminalIds);
+
+  // PHY-001: Validate every wire endpoint before graph construction.
   for (const wire of state.wires) {
-    if (terminalSet.has(wire.sourceTerminalId) && terminalSet.has(wire.targetTerminalId)) {
-      uf.union(wire.sourceTerminalId, wire.targetTerminalId);
+    const srcKnown = terminalSet.has(wire.sourceTerminalId);
+    const tgtKnown = terminalSet.has(wire.targetTerminalId);
+
+    if (!srcKnown || !tgtKnown) {
+      const unknownEndpoints: string[] = [];
+      if (!srcKnown) unknownEndpoints.push(`source '${wire.sourceTerminalId}'`);
+      if (!tgtKnown) unknownEndpoints.push(`target '${wire.targetTerminalId}'`);
+
+      messages.push({
+        ruleId: 'DANGLING_WIRE',
+        severity: 'error',
+        message: `Wire '${wire.id}' has unknown endpoint(s): ${unknownEndpoints.join(', ')}. The displayed circuit may differ from the solved circuit.`,
+        componentIds: [],
+      });
+      // Skip this wire — do not union unknown terminals
+      continue;
     }
+
+    uf.union(wire.sourceTerminalId, wire.targetTerminalId);
   }
 
   for (const comp of state.components) {
@@ -128,9 +166,9 @@ export function buildGraph(state: CircuitState): ElectricalGraph {
     });
 
     if (comp.type === 'battery' && groundNodeId === '') {
-      // First battery's negative terminal sets the ground
-      // Convention: terminal[1] is negative for battery
-      groundNodeId = nodeB; 
+      // First battery's negative terminal sets the ground.
+      // Convention: terminal[1] is negative for battery.
+      groundNodeId = nodeB;
     }
   }
 
@@ -144,21 +182,40 @@ export function buildGraph(state: CircuitState): ElectricalGraph {
   }
 
   return {
-    nodes,
-    branches,
-    groundNodeId
+    graph: { nodes, branches, groundNodeId },
+    messages,
   };
 }
 
+/**
+ * Returns all connected components of the graph traversing ALL branches
+ * (including voltmeters). Use this only for display-layer purposes.
+ *
+ * For electrical connectivity checks (PHY-008), use getConductiveComponents.
+ */
 export function getConnectedComponents(graph: ElectricalGraph): ElectricalNode[][] {
+  return _getComponents(graph, graph.branches);
+}
+
+/**
+ * PHY-008 — Returns connected components using only conductive branches
+ * (excludes voltmeters). Voltmeter-only links do not constitute electrical
+ * connectivity for the purposes of active-subgraph and open-circuit checks.
+ */
+export function getConductiveComponents(graph: ElectricalGraph): ElectricalNode[][] {
+  const conductiveBranches = graph.branches.filter(b => b.type !== 'voltmeter');
+  return _getComponents(graph, conductiveBranches);
+}
+
+function _getComponents(graph: ElectricalGraph, branches: ElectricalGraph['branches']): ElectricalNode[][] {
   const adj = new Map<string, string[]>();
   for (const node of graph.nodes) {
     adj.set(node.id, []);
   }
 
-  for (const branch of graph.branches) {
-    adj.get(branch.nodeA)!.push(branch.nodeB);
-    adj.get(branch.nodeB)!.push(branch.nodeA);
+  for (const branch of branches) {
+    adj.get(branch.nodeA)?.push(branch.nodeB);
+    adj.get(branch.nodeB)?.push(branch.nodeA);
   }
 
   const visited = new Set<string>();

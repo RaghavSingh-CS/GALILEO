@@ -142,11 +142,16 @@ export interface SimulationResult {
 }
 
 // ─── Experiment Framework (lives in experiment layer) ──
+// PHY-014 (pending): ExperimentDefinition should move to the experiment layer
+// once cross-team ownership is agreed. It currently lives here for convenience
+// but circuit-domain types should not own generic experiment metadata.
 export interface ExperimentDefinition {
   id: string;
   title: string;
   objective: string;
   apparatus: ComponentType[];
   instructions: string[];
-  transformComponents?: (components: Component[]) => Component[];
+  // PHY-016: transformComponents removed — no consumer exists. Re-add only
+  // when a concrete experiment requires component transformation and the
+  // invariant is documented and tested.
 }

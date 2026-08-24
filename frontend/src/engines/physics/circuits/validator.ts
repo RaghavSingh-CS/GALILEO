@@ -1,10 +1,104 @@
-import { CircuitState, ElectricalGraph, ValidationMessage } from './types';
-import { getConnectedComponents, hasPathBetween } from './graph';
+/**
+ * validator.ts — Validates an ElectricalGraph against known circuit rules.
+ *
+ * PHY-007: Zero-resistance short-circuit detection is extended to cover
+ *   arbitrary wire-chain, closed-switch, and multi-ammeter paths, not just
+ *   the trivial collapsed-terminal and single-ammeter cases.
+ *
+ * PHY-008: Disconnected-component and active-subgraph checks now use
+ *   getConductiveComponents, so a voltmeter-only link cannot make an
+ *   electrically isolated subgraph appear connected.
+ *
+ * PHY-010: Known degenerate topologies (all-zero-resistance loops) now return
+ *   specific rule IDs instead of falling through to DEGENERATE_TOPOLOGY.
+ */
+
+import type { CircuitState, ElectricalGraph, ValidationMessage } from './types';
+import { getConductiveComponents, hasPathBetween } from './graph';
+
+/**
+ * PHY-007 — Detects zero-resistance short-circuit paths between battery
+ * terminal nodes.
+ *
+ * Builds a subgraph containing only zero-resistance elements (wires that have
+ * been union-found into the same node, closed switches merged into nodes, and
+ * ammeter branches which have value=0). Uses BFS to determine if a battery's
+ * two terminal nodes are reachable from one another through this subgraph
+ * without passing through any resistive element.
+ *
+ * Returns SHORT_CIRCUIT messages for each shorted battery.
+ */
+function detectZeroResistanceShorts(graph: ElectricalGraph): ValidationMessage[] {
+  const messages: ValidationMessage[] = [];
+
+  // Zero-resistance branches: ammeters (value=0) only.
+  // Wires are already collapsed into nodes by buildGraph, so zero-resistance
+  // wire-chain paths manifest as identical nodeA/nodeB on the battery branch
+  // (collapsed terminal short), or as an ammeter path between battery nodes.
+  const zeroResBranches = graph.branches.filter(
+    b => b.type === 'ammeter' // value = 0 (ideal short)
+  );
+
+  for (const battery of graph.branches.filter(b => b.type === 'battery')) {
+    // Trivial: battery terminals collapsed into a single node (direct wire short)
+    if (battery.nodeA === battery.nodeB) {
+      messages.push({
+        ruleId: 'SHORT_CIRCUIT',
+        severity: 'error',
+        message: `Short circuit detected — battery '${battery.componentId}' terminals are connected with no resistance.`,
+        componentIds: [battery.componentId],
+      });
+      continue;
+    }
+
+    // Non-trivial: BFS through zero-resistance branches between battery nodes.
+    // Build adjacency from zero-resistance elements only.
+    const adj = new Map<string, Set<string>>();
+    for (const b of zeroResBranches) {
+      if (!adj.has(b.nodeA)) adj.set(b.nodeA, new Set());
+      if (!adj.has(b.nodeB)) adj.set(b.nodeB, new Set());
+      adj.get(b.nodeA)!.add(b.nodeB);
+      adj.get(b.nodeB)!.add(b.nodeA);
+    }
+
+    if (!adj.has(battery.nodeA) && !adj.has(battery.nodeB)) continue;
+
+    // BFS from battery.nodeA through zero-resistance branches
+    const visited = new Set<string>([battery.nodeA]);
+    const queue = [battery.nodeA];
+
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      for (const neighbor of adj.get(curr) ?? []) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          queue.push(neighbor);
+        }
+      }
+    }
+
+    if (visited.has(battery.nodeB)) {
+      // Collect all ammeter component IDs on the short path
+      const shortedAmmeters = zeroResBranches
+        .filter(b => visited.has(b.nodeA) && visited.has(b.nodeB))
+        .map(b => b.componentId);
+
+      messages.push({
+        ruleId: 'SHORT_CIRCUIT',
+        severity: 'error',
+        message: `Short circuit detected — a zero-resistance path exists between the terminals of battery '${battery.componentId}' (through: ${shortedAmmeters.join(', ')}).`,
+        componentIds: [battery.componentId, ...shortedAmmeters],
+      });
+    }
+  }
+
+  return messages;
+}
 
 export function validateGraph(graph: ElectricalGraph, state: CircuitState): ValidationMessage[] {
   const messages: ValidationMessage[] = [];
 
-  // INVALID_VALUE check
+  // ── INVALID_VALUE ────────────────────────────────────────────────────────
   for (const comp of state.components) {
     if (comp.type === 'battery' && (!Number.isFinite(comp.voltage) || comp.voltage <= 0)) {
       messages.push({
@@ -33,9 +127,10 @@ export function validateGraph(graph: ElectricalGraph, state: CircuitState): Vali
       }
     }
   }
-  
+
+  // ── NO_BATTERY ───────────────────────────────────────────────────────────
   const batteries = state.components.filter(c => c.type === 'battery');
-  
+
   if (batteries.length === 0) {
     messages.push({
       ruleId: 'NO_BATTERY',
@@ -46,38 +141,14 @@ export function validateGraph(graph: ElectricalGraph, state: CircuitState): Vali
     return messages;
   }
 
-  // SHORT_CIRCUIT
-  for (const batteryBranch of graph.branches.filter(b => b.type === 'battery')) {
-    if (batteryBranch.nodeA === batteryBranch.nodeB) {
-      messages.push({
-        ruleId: 'SHORT_CIRCUIT',
-        severity: 'error',
-        message: 'Short circuit detected — the battery terminals are connected with no resistance.',
-        componentIds: [batteryBranch.componentId]
-      });
-    }
-  }
+  // ── SHORT_CIRCUIT (PHY-007: full zero-resistance path detection) ─────────
+  messages.push(...detectZeroResistanceShorts(graph));
 
-  const ammeterBranchesForShortCheck = graph.branches.filter(b => b.type === 'ammeter');
-  for (const ammeter of ammeterBranchesForShortCheck) {
-    const overlappingBattery = graph.branches.find(b => 
-      b.type === 'battery' && 
-      ((b.nodeA === ammeter.nodeA && b.nodeB === ammeter.nodeB) || 
-       (b.nodeA === ammeter.nodeB && b.nodeB === ammeter.nodeA))
-    );
-    if (overlappingBattery) {
-      messages.push({
-        ruleId: 'SHORT_CIRCUIT',
-        severity: 'error',
-        message: 'Short circuit detected — ammeter directly across battery terminals creates a zero-resistance path.',
-        componentIds: [ammeter.componentId, overlappingBattery.componentId]
-      });
-    }
-  }
+  // PHY-008: Use conductive components for all connectivity-based checks.
+  // This ensures voltmeter-only links do not falsely connect subgraphs.
+  const conductiveComponents = getConductiveComponents(graph);
 
-  const connectedComponents = getConnectedComponents(graph);
-  
-  // Find which connected components have a battery
+  // ── Find which conductive components contain a battery node ──────────────
   const batteryNodeIds = new Set<string>();
   for (const b of graph.branches) {
     if (b.type === 'battery') {
@@ -87,32 +158,28 @@ export function validateGraph(graph: ElectricalGraph, state: CircuitState): Vali
   }
 
   const activeGraphComponents = new Set<number>();
-  connectedComponents.forEach((compNodes, index) => {
+  conductiveComponents.forEach((compNodes, index) => {
     if (compNodes.some(n => batteryNodeIds.has(n.id))) {
       activeGraphComponents.add(index);
     }
   });
 
-  // DISCONNECTED_COMPONENT: find components not in active graph components
+  // ── DISCONNECTED_COMPONENT ───────────────────────────────────────────────
   const warnedGraphComps = new Set<number>();
   for (const branch of graph.branches) {
     const nodeA = graph.nodes.find(n => n.id === branch.nodeA)!;
-    
-    // Find which graph component this branch belongs to
-    const graphCompIndex = connectedComponents.findIndex(comp => comp.some(n => n.id === nodeA.id));
+
+    const graphCompIndex = conductiveComponents.findIndex(comp => comp.some(n => n.id === nodeA.id));
     if (!activeGraphComponents.has(graphCompIndex) && !warnedGraphComps.has(graphCompIndex)) {
-      // Gather all components in this disconnected subgraph
-      const compNodes = connectedComponents[graphCompIndex];
+      const compNodes = conductiveComponents[graphCompIndex];
       const subgraphComponentIds = new Set<string>();
-      
-      // Add components from branches in this subgraph
+
       graph.branches.forEach(b => {
         if (compNodes.some(n => n.id === b.nodeA)) {
           subgraphComponentIds.add(b.componentId);
         }
       });
-      
-      // Add switches that belong to this subgraph
+
       state.components.filter(c => c.type === 'switch').forEach(c => {
         if (compNodes.some(n => n.terminalIds.includes(c.terminals[0].id) || n.terminalIds.includes(c.terminals[1].id))) {
           subgraphComponentIds.add(c.id);
@@ -129,13 +196,15 @@ export function validateGraph(graph: ElectricalGraph, state: CircuitState): Vali
     }
   }
 
-  // Check switches not in active circuit too (they don't form branches)
+  // Check switches not in active circuit (they don't form branches)
   for (const comp of state.components.filter(c => c.type === 'switch')) {
-    const nodeIdsForSwitch = graph.nodes.filter(n => n.terminalIds.includes(comp.terminals[0].id) || n.terminalIds.includes(comp.terminals[1].id));
+    const nodeIdsForSwitch = graph.nodes.filter(n =>
+      n.terminalIds.includes(comp.terminals[0].id) || n.terminalIds.includes(comp.terminals[1].id)
+    );
     let isActive = false;
     let handledInSubgraph = false;
     for (const node of nodeIdsForSwitch) {
-      const graphCompIndex = connectedComponents.findIndex(compNodes => compNodes.some(n => n.id === node.id));
+      const graphCompIndex = conductiveComponents.findIndex(compNodes => compNodes.some(n => n.id === node.id));
       if (activeGraphComponents.has(graphCompIndex)) {
         isActive = true;
       }
@@ -153,17 +222,17 @@ export function validateGraph(graph: ElectricalGraph, state: CircuitState): Vali
     }
   }
 
-  // OPEN_CIRCUIT
-  // Check if every battery is part of a closed loop
+  // ── OPEN_CIRCUIT ─────────────────────────────────────────────────────────
+  // Check if every battery is part of a closed conductive loop.
   for (const batteryBranch of graph.branches.filter(b => b.type === 'battery')) {
-    // We want to see if there's a path between battery.nodeA and battery.nodeB
-    // WITHOUT using the battery branch itself.
+    // Check for a path between battery terminals excluding the battery itself
+    // and all voltmeters (voltmeters don't conduct current).
     const graphWithoutBattery: ElectricalGraph = {
       nodes: graph.nodes,
       branches: graph.branches.filter(b => b.id !== batteryBranch.id && b.type !== 'voltmeter'),
       groundNodeId: graph.groundNodeId
     };
-    
+
     if (!hasPathBetween(graphWithoutBattery, batteryBranch.nodeA, batteryBranch.nodeB)) {
       messages.push({
         ruleId: 'OPEN_CIRCUIT',
@@ -174,7 +243,32 @@ export function validateGraph(graph: ElectricalGraph, state: CircuitState): Vali
     }
   }
 
-  // AMMETER_IN_PARALLEL
+  // ── PHY-010: All-voltage-source loop (known degeneracy, specific rule ID) ─
+  // A loop made entirely of voltage sources (batteries + ammeters) with no
+  // resistive elements has a degenerate MNA matrix. Detect and name it
+  // specifically rather than letting it fall through to DEGENERATE_TOPOLOGY.
+  const conductiveBranches = graph.branches.filter(b => b.type !== 'voltmeter');
+  const hasResistiveBranch = conductiveBranches.some(
+    b => b.type === 'resistor' || b.type === 'variable_resistor'
+  );
+  const hasVoltageSources = conductiveBranches.some(
+    b => b.type === 'battery' || b.type === 'ammeter'
+  );
+  if (hasVoltageSources && !hasResistiveBranch && conductiveBranches.length > 0) {
+    // Only flag as degenerate if there is no OPEN_CIRCUIT already (an open
+    // circuit with no resistors is legitimately open, not a degenerate loop).
+    const alreadyOpen = messages.some(m => m.ruleId === 'OPEN_CIRCUIT');
+    if (!alreadyOpen) {
+      messages.push({
+        ruleId: 'ALL_SOURCES_NO_RESISTANCE',
+        severity: 'error',
+        message: 'The circuit contains only voltage sources and zero-resistance elements with no resistive load. This creates an indeterminate system.',
+        componentIds: conductiveBranches.filter(b => b.type === 'battery').map(b => b.componentId),
+      });
+    }
+  }
+
+  // ── AMMETER_IN_PARALLEL ──────────────────────────────────────────────────
   const ammeterBranches = graph.branches.filter(b => b.type === 'ammeter');
   for (const ammeter of ammeterBranches) {
     if (ammeter.nodeA === ammeter.nodeB) {
@@ -187,13 +281,12 @@ export function validateGraph(graph: ElectricalGraph, state: CircuitState): Vali
       continue;
     }
 
-    // Check if any other branch shares the EXACT same two nodes
-    const parallelBranch = graph.branches.find(b => 
-      b.id !== ammeter.id && 
-      ((b.nodeA === ammeter.nodeA && b.nodeB === ammeter.nodeB) || 
+    const parallelBranch = graph.branches.find(b =>
+      b.id !== ammeter.id &&
+      ((b.nodeA === ammeter.nodeA && b.nodeB === ammeter.nodeB) ||
        (b.nodeA === ammeter.nodeB && b.nodeB === ammeter.nodeA))
     );
-    
+
     if (parallelBranch) {
       messages.push({
         ruleId: 'AMMETER_IN_PARALLEL',
@@ -204,18 +297,18 @@ export function validateGraph(graph: ElectricalGraph, state: CircuitState): Vali
     }
   }
 
-  // VOLTMETER_IN_SERIES
+  // ── VOLTMETER_IN_SERIES ──────────────────────────────────────────────────
   const voltmeterBranches = graph.branches.filter(b => b.type === 'voltmeter');
   for (const voltmeter of voltmeterBranches) {
     const nonVoltmeterBranches = graph.branches.filter(b => b.type !== 'voltmeter');
     const nodeADegree = nonVoltmeterBranches.filter(b => b.nodeA === voltmeter.nodeA || b.nodeB === voltmeter.nodeA).length;
     const nodeBDegree = nonVoltmeterBranches.filter(b => b.nodeA === voltmeter.nodeB || b.nodeB === voltmeter.nodeB).length;
-    
+
     if (nodeADegree <= 1 || nodeBDegree <= 1) {
       messages.push({
         ruleId: 'VOLTMETER_IN_SERIES',
         severity: 'warning',
-        message: "Voltmeter should be connected in parallel across the component being measured.",
+        message: 'Voltmeter should be connected in parallel across the component being measured.',
         componentIds: [voltmeter.componentId]
       });
     }
