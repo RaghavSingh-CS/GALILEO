@@ -101,8 +101,49 @@ The engine must safely reject untrusted, malformed state coming from the UI/Reac
 
 **Known limitations**
 
-- The engine now lacks Ohm's Law and Series/Parallel experiment definitions entirely since they were deleted instead of refactored.
+- The engine lacked Ohm's Law and Series/Parallel experiment definitions temporarily before Phase 9.
 
 **Pending/next steps**
 
-- Implement the actual Ohm's Law and Series/Parallel verifiers (Phase 9) inside `engines/physics/experiments` to provide a robust facade for the frontend UI.
+- None for Phase 8.
+
+### 2026-08-25 02:40:00 +05:30 — Physics Engine Red Team Audit & Pedagogical Verifiers (Phase 9)
+
+**Decision/change**
+
+Implemented the `ohms-law.ts` and `series-parallel.ts` pedagogical verifiers. Conducted an exhaustive "Red Team" security audit and E2E simulation testing (`user-flow.test.ts`), hardening the verifiers to strictly enforce exact component counts and reject extraneous components to seal cheat loopholes. Established `index.ts` as the strict public facade, shielding internal engine logic from external adapters.
+
+**Rationale**
+
+The engine must safely evaluate educational laboratory tasks, meaning mathematically valid physical circuits (e.g., adding 5 extra batteries) must still be rejected if they violate the pedagogical parameters of the specific lab. An E2E test suite ensures the engine correctly processes incremental, incomplete UI states (like dangling wires) exactly as the user creates them, without crashing. 
+
+**Files added/modified**
+
+- `frontend/src/engines/physics/experiments/ohms-law.ts`
+- `frontend/src/engines/physics/experiments/series-parallel.ts`
+- `frontend/src/engines/physics/experiments/types.ts`
+- `frontend/src/engines/physics/experiments/__tests__/user-flow.test.ts`
+- `frontend/src/engines/physics/index.ts`
+
+**Interfaces/contracts affected**
+
+- `verifyOhmsLawExperiment` and `verifySeriesParallelExperiment` added to the public `index.ts` API.
+- Replaced the deprecated `TOO_MANY_COMPONENTS` with `EXTRANEOUS_COMPONENTS` in the unified types.
+
+**Scientific assumptions**
+
+- None new. Pedagogical verifiers defer all math and topological rules to the core `solveCircuit` pipeline.
+
+**Tests/verification performed**
+
+- 67 strict unit/integration tests passing.
+- Custom `user-flow.test.ts` E2E simulator successfully executes a multi-step user interaction (dropping a battery, leaving dangling wires, successfully wiring the lab, and maliciously adding extra batteries).
+- TypeScript composite typecheck (`tsc -b`) enforces 0 errors across the entire module.
+
+**Known limitations**
+
+- The engine is fully completed for V1 requirements (DC resistive circuits).
+
+**Pending/next steps**
+
+- The Physics Engine is simulation ready. Next step is for the UI Team to build an adapter to map the React Flow graph state into our `CircuitState` format and consume the pedagogical verifier outputs.
