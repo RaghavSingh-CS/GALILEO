@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildGraph, getConnectedComponents, getConductiveComponents, hasPathBetween } from '../graph';
+import { buildGraph, getConnectedComponents, getConductiveComponents } from '../graph';
 import type { CircuitState, BatteryComponent, ResistorComponent, SwitchComponent, VoltmeterComponent, Wire } from '../types';
 
 describe('Graph Builder', () => {

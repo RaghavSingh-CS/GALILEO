@@ -1,2 +1,3 @@
-export * from './ohmsLaw';
-export * from './seriesParallel';
+export * from './types';
+export * from './ohms-law';
+export * from './series-parallel';
