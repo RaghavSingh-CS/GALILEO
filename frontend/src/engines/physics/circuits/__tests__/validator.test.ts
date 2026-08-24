@@ -41,9 +41,8 @@ describe('Validator', () => {
     const state: CircuitState = { components: [r1], wires: [] };
     const messages = validateGraph(getGraph(state), state);
 
-    expect(messages.length).toBe(1);
-    expect(messages[0].ruleId).toBe('NO_BATTERY');
-    expect(messages[0].severity).toBe('error');
+    expect(messages.some(m => m.ruleId === 'NO_BATTERY')).toBe(true);
+    expect(messages.find(m => m.ruleId === 'NO_BATTERY')!.severity).toBe('error');
   });
 
   it('DISCONNECTED_COMPONENT: floating resistor', () => {
@@ -60,6 +59,43 @@ describe('Validator', () => {
     const messages = validateGraph(getGraph(state), state);
 
     expect(messages.some(m => m.ruleId === 'DISCONNECTED_COMPONENT' && m.componentIds.includes('r2'))).toBe(true);
+  });
+
+  it('FLOATING_TERMINAL: terminal with no connections', () => {
+    const b1 = makeBattery('b1');
+    const r1 = makeResistor('r1');
+    const state: CircuitState = {
+      components: [b1, r1],
+      wires: [
+        makeWire('w1', b1.terminals[0].id, r1.terminals[0].id)
+      ]
+    };
+    const messages = validateGraph(getGraph(state), state);
+
+    // r1:b is unconnected, b1:negative is unconnected
+    expect(messages.some(m => m.ruleId === 'FLOATING_TERMINAL' && m.componentIds.includes('r1'))).toBe(true);
+    expect(messages.some(m => m.ruleId === 'FLOATING_TERMINAL' && m.componentIds.includes('b1'))).toBe(true);
+  });
+
+  it('FLOATING_TERMINAL: component with one floating terminal and one connected terminal', () => {
+    const b1 = makeBattery('b1');
+    const r1 = makeResistor('r1');
+    const r2 = makeResistor('r2');
+    const state: CircuitState = {
+      components: [b1, r1, r2],
+      wires: [
+        makeWire('w1', b1.terminals[0].id, r1.terminals[0].id),
+        makeWire('w2', r1.terminals[1].id, b1.terminals[1].id),
+        // r2 is connected on 'a' to the circuit, but 'b' is floating
+        makeWire('w3', r2.terminals[0].id, b1.terminals[0].id)
+      ]
+    };
+    const messages = validateGraph(getGraph(state), state);
+
+    // Should flag r2's 'b' terminal as floating
+    const msg = messages.find(m => m.ruleId === 'FLOATING_TERMINAL' && m.componentIds.includes('r2'));
+    expect(msg).toBeDefined();
+    expect(msg!.message).toContain('r2:b');
   });
 
   it('OPEN_CIRCUIT: break in the loop', () => {

@@ -128,6 +128,24 @@ export function validateGraph(graph: ElectricalGraph, state: CircuitState): Vali
     }
   }
 
+  // ── FLOATING_TERMINAL (PHY-023) ──────────────────────────────────────────
+  for (const node of graph.nodes) {
+    if (node.terminalIds.length === 1) {
+      const floatingTerminalId = node.terminalIds[0];
+      const ownerComponent = state.components.find(c => 
+        c.terminals.some(t => t.id === floatingTerminalId)
+      );
+      if (ownerComponent) {
+        messages.push({
+          ruleId: 'FLOATING_TERMINAL',
+          severity: 'warning',
+          message: `Terminal '${floatingTerminalId}' on component '${ownerComponent.id}' is completely unconnected.`,
+          componentIds: [ownerComponent.id]
+        });
+      }
+    }
+  }
+
   // ── NO_BATTERY ───────────────────────────────────────────────────────────
   const batteries = state.components.filter(c => c.type === 'battery');
 

@@ -241,4 +241,37 @@ describe('Solver Integration', () => {
     expect(result.success).toBe(false);
     expect(result.validation.some(v => v.ruleId === 'MALFORMED_INPUT')).toBe(true);
   });
+
+  it('Integration: Graceful degradation — half-connected component (FLOATING_TERMINAL) does not prevent solving the rest of the circuit', () => {
+    const b1 = makeBattery('b1', 10);
+    const r1 = makeResistor('r1', 100);
+    const r2 = makeResistor('r2', 100);
+    const state: CircuitState = {
+      components: [b1, r1, r2],
+      wires: [
+        makeWire('w1', b1.terminals[0].id, r1.terminals[0].id),
+        makeWire('w2', r1.terminals[1].id, b1.terminals[1].id),
+        // r2 is attached to the positive rail but its other end is dangling
+        makeWire('w3', r2.terminals[0].id, b1.terminals[0].id)
+      ]
+    };
+
+    const result = solveCircuit(state);
+    
+    // The solve should succeed because warnings do not block execution
+    expect(result.success).toBe(true);
+    
+    // It should emit FLOATING_TERMINAL warning for r2
+    expect(result.validation.some(v => v.ruleId === 'FLOATING_TERMINAL')).toBe(true);
+    // Note: It does NOT emit DISCONNECTED_COMPONENT because r2 is attached to the active circuit (dead end branch).
+
+    // The rest of the circuit (b1 and r1) should be solved correctly (10V / 100ohm = 0.1A)
+    const r1Branch = result.branchData.find(b => b.componentId === 'r1')!;
+    expect(closeTo(r1Branch.current, 0.1)).toBe(true);
+    // r2 is in the branch data but since it's a dead end, it receives 0A and 0V
+    const r2Branch = result.branchData.find(b => b.componentId === 'r2')!;
+    expect(r2Branch).toBeDefined();
+    expect(r2Branch.current).toBe(0);
+    expect(r2Branch.voltage).toBe(0);
+  });
 });
