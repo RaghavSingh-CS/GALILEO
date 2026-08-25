@@ -4,6 +4,8 @@ import { ohmsLawConfig } from "./physics/ohms-law/config";
 import { ohmsLawEngine } from "./physics/ohms-law/engine";
 import { titrationConfig } from "./chemistry/titration-analysis/config";
 import { titrationEngine } from "./chemistry/titration-analysis/engine";
+import { seriesParallelConfig } from "./physics/series-parallel/config";
+import { seriesParallelEngine } from "./physics/series-parallel/engine";
 
 export interface ExperimentEntry {
   config: ExperimentConfig;
@@ -14,6 +16,10 @@ const experiments: Record<string, ExperimentEntry> = {
   "ohms-law": {
     config: ohmsLawConfig,
     engine: ohmsLawEngine,
+  },
+  "series-parallel": {
+    config: seriesParallelConfig,
+    engine: seriesParallelEngine,
   },
   "titration-analysis": {
     config: titrationConfig,

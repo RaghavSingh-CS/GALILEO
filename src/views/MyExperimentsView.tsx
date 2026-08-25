@@ -42,7 +42,7 @@ export default function MyExperimentsView() {
 
   const handleResumeSession = (session: ConductedExperimentSession) => {
     // Pre-populate experiment store with this session's readings and apparatus settings
-    loadSession(session.apparatusValues, session.observations);
+    loadSession(session.experimentId, session.apparatusValues, session.observations, session.notes || "");
     // Open the workspace with this experiment ID
     openExperiment(session.experimentId);
   };

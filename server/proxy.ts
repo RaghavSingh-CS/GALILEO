@@ -19,6 +19,14 @@ if (!API_KEY) {
   );
 }
 
+app.get("/api/galileo/health", (req, res) => {
+  if (API_KEY) {
+    res.json({ status: "connected" });
+  } else {
+    res.json({ status: "disconnected" });
+  }
+});
+
 app.post("/api/galileo/chat", async (req, res) => {
   try {
     if (!API_KEY) {

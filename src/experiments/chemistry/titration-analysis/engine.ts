@@ -1,21 +1,4 @@
 import type { SimulationEngine, SimulationResult } from "../../types";
-import { useSettingsStore } from "@/stores/settings";
-import {
-  MOHRS_SALT_HEXAHYDRATE_MATERIAL_ID,
-  MOHRS_SALT_PREPARATION_SPEC,
-  applyMohrsSaltPreparationAction,
-  createMohrsSaltPreparation,
-} from "../preparation/named";
-
-import {
-  MOHRS_SALT_TITRATION_SPEC,
-  addMohrsSaltTitrationAcid,
-  applyMohrsSaltTitrationDelivery,
-  createMohrsSaltTitration,
-  deriveMohrsSaltTitrationResult,
-  prepareMohrsSaltTitrationAliquot,
-  startMohrsSaltTitration,
-} from "../permanganate/named";
 
 function gaussianNoise(mean: number, stddevFraction: number): number {
   if (stddevFraction <= 0) return mean;
@@ -25,52 +8,11 @@ function gaussianNoise(mean: number, stddevFraction: number): number {
   return mean + z * stddevFraction;
 }
 
-function buildMohrsSaltTrial(volumeAdded: number) {
-  let preparation = createMohrsSaltPreparation().state;
-
-  preparation = applyMohrsSaltPreparationAction(preparation, {
-    type: "add-material",
-    materialId: MOHRS_SALT_HEXAHYDRATE_MATERIAL_ID,
-    measuredMassG: MOHRS_SALT_PREPARATION_SPEC.targetMassG,
-  }).state;
-
-  preparation = applyMohrsSaltPreparationAction(preparation, {
-    type: "add-external-solvent-volume",
-    volumeL: 0.1,
-  }).state;
-
-  preparation = applyMohrsSaltPreparationAction(preparation, { type: "mix" }).state;
-
-  preparation = applyMohrsSaltPreparationAction(preparation, {
-    type: "acidify-with-dilute-sulfuric-acid",
-  }).state;
-
-  preparation = applyMohrsSaltPreparationAction(preparation, {
-    type: "add-external-solvent-volume",
-    volumeL: MOHRS_SALT_PREPARATION_SPEC.targetVolumeL - 0.1,
-  }).state;
-
-  preparation = applyMohrsSaltPreparationAction(preparation, {
-    type: "complete-preparation",
-  }).state;
-
-  let trial = createMohrsSaltTitration(preparation).state;
-  trial = prepareMohrsSaltTitrationAliquot(trial).state;
-  trial = addMohrsSaltTitrationAcid(trial).state;
-  trial = startMohrsSaltTitration(trial, 1.2).state;
-
-  if (volumeAdded > 0) {
-    trial = applyMohrsSaltTitrationDelivery(trial, volumeAdded).state;
-  }
-
-  return deriveMohrsSaltTitrationResult(trial);
-}
-
-function computePHFromStoichiometry(volumeAdded: number): number {
+function computePHFromStoichiometry(volumeAdded: number, analyteVolume: number): number {
   const volAdded = Math.max(0, volumeAdded);
-  const vBase = MOHRS_SALT_PREPARATION_SPEC.targetVolumeL * 1000;
-  const mBase = MOHRS_SALT_PREPARATION_SPEC.targetMolarityMolPerL;
-  const mAcid = MOHRS_SALT_TITRATION_SPEC.actualTitrantMolarityMolPerL;
+  const vBase = analyteVolume;
+  const mBase = 0.1; // 0.1M NaOH
+  const mAcid = 0.1; // 0.1M HCl
 
   const molesBaseInitial = (vBase / 1000) * mBase;
   const molesAcidAdded = (volAdded / 1000) * mAcid;
@@ -101,15 +43,13 @@ export const titrationEngine: SimulationEngine = {
     { key: "totalVol", label: "Total Solution Vol", unit: "mL" },
   ],
 
-  compute(inputs: Record<string, number>): SimulationResult {
+  compute(inputs: Record<string, number>, options?: { noiseFraction?: number }): SimulationResult {
     const volAdded = inputs.volumeAdded ?? 0;
-    const analyteVolume = inputs.analyteVolume ?? MOHRS_SALT_PREPARATION_SPEC.targetVolumeL * 1000;
+    const analyteVolume = inputs.analyteVolume ?? 25;
 
-    const chemResult = buildMohrsSaltTrial(volAdded);
-    const stoichiometricPH = computePHFromStoichiometry(volAdded);
-    const noiseFraction = useSettingsStore.getState().getNoiseFraction();
-    const chemistryBias = chemResult.usability === "usable" ? 0.15 : 0.0;
-    const noisyPH = gaussianNoise(stoichiometricPH + chemistryBias, noiseFraction * 1.5);
+    const stoichiometricPH = computePHFromStoichiometry(volAdded, analyteVolume);
+    const noiseFraction = options?.noiseFraction ?? 0;
+    const noisyPH = gaussianNoise(stoichiometricPH, noiseFraction * 1.5);
     const clampedPH = Math.max(1.0, Math.min(13.8, noisyPH));
 
     return {

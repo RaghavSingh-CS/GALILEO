@@ -1,13 +1,6 @@
 import type { SimulationEngine, SimulationResult } from "../../types";
-import { useSettingsStore } from "@/stores/settings";
-
-function gaussianNoise(mean: number, stddevFraction: number): number {
-  if (stddevFraction <= 0) return mean;
-  const u1 = Math.max(1e-6, Math.random());
-  const u2 = Math.random();
-  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-  return mean * (1 + z * stddevFraction);
-}
+import { solveCircuit } from "@/engines/physics/circuits";
+import type { CircuitState, Terminal, Wire } from "@/engines/physics/circuits";
 
 export const ohmsLawEngine: SimulationEngine = {
   outputColumns: [
@@ -15,20 +8,43 @@ export const ohmsLawEngine: SimulationEngine = {
     { key: "power", label: "Power Dissipated", unit: "mW" },
   ],
 
-  compute(inputs: Record<string, number>): SimulationResult {
+  compute(inputs: Record<string, number>, options?: { noiseFraction?: number }): SimulationResult {
     const V = inputs.voltage ?? 0;
     const R = inputs.resistance ?? 100;
-    const noiseFraction = useSettingsStore.getState().getNoiseFraction();
 
-    // I = V / R (Ohm's Law), apply configured noise fraction
-    const idealCurrent = R > 0 ? V / R : 0;
-    const noisyCurrent = R > 0 ? gaussianNoise(idealCurrent, noiseFraction) : 0;
+    const batT1: Terminal = { id: "bat_1:pos", componentId: "bat_1", role: "positive" };
+    const batT2: Terminal = { id: "bat_1:neg", componentId: "bat_1", role: "negative" };
+    const resT1: Terminal = { id: "res_1:a", componentId: "res_1", role: "a" };
+    const resT2: Terminal = { id: "res_1:b", componentId: "res_1", role: "b" };
+    const amT1: Terminal = { id: "am_1:in", componentId: "am_1", role: "in" };
+    const amT2: Terminal = { id: "am_1:out", componentId: "am_1", role: "out" };
 
-    // Convert to mA for display
-    const currentMA = noisyCurrent * 1000;
+    const circuitState: CircuitState = {
+      components: [
+        { id: "bat_1", type: "battery", terminals: [batT1, batT2], voltage: V },
+        { id: "res_1", type: "resistor", terminals: [resT1, resT2], resistance: Math.max(R, 0.1) },
+        { id: "am_1", type: "ammeter", terminals: [amT1, amT2] }
+      ],
+      wires: [
+        { id: "w1", sourceTerminalId: batT1.id, targetTerminalId: resT1.id },
+        { id: "w2", sourceTerminalId: resT2.id, targetTerminalId: amT1.id },
+        { id: "w3", sourceTerminalId: amT2.id, targetTerminalId: batT2.id }
+      ]
+    };
 
-    // P = V * I
-    const powerMW = V * noisyCurrent * 1000;
+    const result = solveCircuit(circuitState, options);
+    let currentMA = 0;
+    let powerMW = 0;
+
+    const ammeter = result.readings.find(r => r.type === "ammeter");
+    if (ammeter) {
+      currentMA = Math.abs(ammeter.value) * 1000;
+    }
+
+    const resBranch = result.branchData.find(b => b.type === "resistor");
+    if (resBranch) {
+      powerMW = Math.abs(resBranch.voltage * resBranch.current) * 1000;
+    }
 
     return {
       current: Math.round(currentMA * 100) / 100,

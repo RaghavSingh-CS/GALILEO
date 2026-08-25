@@ -19,6 +19,7 @@ interface NavigationStore {
   setGalileoPanel: (open: boolean) => void;
   openNewExpModal: () => void;
   closeNewExpModal: () => void;
+  setActiveView: (view: ActiveView) => void;
 }
 
 export const useNavigationStore = create<NavigationStore>((set) => ({
@@ -74,5 +75,9 @@ export const useNavigationStore = create<NavigationStore>((set) => ({
   setGalileoPanel: (open: boolean) => set({ galileoPanelOpen: open }),
 
   openNewExpModal: () => set({ isNewExpModalOpen: true }),
-  closeNewExpModal: () => set({ isNewExpModalOpen: false }),
+  closeNewExpModal: () =>
+    set({
+      isNewExpModalOpen: false,
+    }),
+  setActiveView: (view: ActiveView) => set({ activeView: view }),
 }));

@@ -1,5 +1,7 @@
 import { useNavigationStore } from "@/stores/navigation";
-import { getAllExperiments } from "@/experiments/registry";
+import { useExperimentStore } from "@/stores/experiment";
+import { useEffect, useState } from "react";
+import { getAllExperiments, getExperiment } from "@/experiments/registry";
 
 interface ExperimentCardProps {
   id: string;
@@ -58,15 +60,36 @@ function ExperimentCard({
 
 export default function Dashboard() {
   const openExperiment = useNavigationStore((s) => s.openExperiment);
+  const startSession = useExperimentStore((s) => s.startSession);
+  const [aiConnected, setAiConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch("/api/galileo/health")
+      .then((res) => res.json())
+      .then((data) => setAiConnected(data.status === "connected"))
+      .catch(() => setAiConnected(false));
+  }, []);
+
   const goToMyExperiments = useNavigationStore((s) => s.goToMyExperiments);
   const goToLibrary = useNavigationStore((s) => s.goToLibrary);
   const goToSettings = useNavigationStore((s) => s.goToSettings);
   const openNewExpModal = useNavigationStore((s) => s.openNewExpModal);
 
-  const registeredExperiments = getAllExperiments();
+  const ohmsLaw = getExperiment("ohms-law");
+  const titration = getExperiment("titration-analysis");
+  const seriesParallel = getExperiment("series-parallel");
 
-  const ohmsLaw = registeredExperiments.find((e) => e.config.id === "ohms-law");
-  const titration = registeredExperiments.find((e) => e.config.id === "titration-analysis");
+  const handleStart = (id: string) => {
+    const entry = getExperiment(id);
+    if (entry) {
+      const defaults: Record<string, number> = {};
+      for (const param of entry.config.apparatus) {
+        defaults[param.id] = param.default;
+      }
+      startSession(id, defaults);
+    }
+    openExperiment(id);
+  };
 
   return (
     <div className="h-screen w-screen flex bg-[#131313] text-[#e5e2e1] font-body-md overflow-hidden selection:bg-[#8da399] selection:text-[#263932]">
@@ -160,8 +183,22 @@ export default function Dashboard() {
         {/* Bottom meta */}
         <div className="mt-auto border-t border-[#424845]/50 pt-4 space-y-1">
           <div className="px-3 py-2 text-xs font-data-mono text-[#8c928e] flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#8da399] animate-pulse" />
-            v0.1.0 · Connected
+            {aiConnected === true ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-[#8da399] animate-pulse" />
+                v0.1.0 · Connected
+              </>
+            ) : aiConnected === false ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+                v0.1.0 · Disconnected
+              </>
+            ) : (
+              <>
+                <span className="w-2 h-2 rounded-full bg-gray-500" />
+                v0.1.0 · Checking...
+              </>
+            )}
           </div>
         </div>
       </nav>
@@ -206,7 +243,7 @@ export default function Dashboard() {
                   ohmsLaw?.config.description ||
                   "Verify the linear relationship between voltage and current across a resistor at constant resistance."
                 }
-                onStart={() => openExperiment("ohms-law")}
+                onStart={() => handleStart("ohms-law")}
               />
             </div>
           </section>
@@ -233,7 +270,7 @@ export default function Dashboard() {
                   titration?.config.description ||
                   "Determine unknown base concentrations via simulated acid-base neutralizations with pH curve tracking."
                 }
-                onStart={() => openExperiment("titration-analysis")}
+                onStart={() => handleStart("titration-analysis")}
               />
             </div>
           </section>

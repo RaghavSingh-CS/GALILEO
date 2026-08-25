@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useNavigationStore } from "@/stores/navigation";
+import { useExperimentStore } from "@/stores/experiment";
+import { getExperiment } from "@/experiments/registry";
 
 export default function LibraryView() {
   const goToDashboard = useNavigationStore((s) => s.goToDashboard);
@@ -7,8 +9,21 @@ export default function LibraryView() {
   const goToSettings = useNavigationStore((s) => s.goToSettings);
   const openExperiment = useNavigationStore((s) => s.openExperiment);
   const openNewExpModal = useNavigationStore((s) => s.openNewExpModal);
+  const startSession = useExperimentStore((s) => s.startSession);
 
   const [activeSubject, setActiveSubject] = useState<string>("all");
+
+  const handleStart = (id: string) => {
+    const entry = getExperiment(id);
+    if (entry) {
+      const defaults: Record<string, number> = {};
+      for (const param of entry.config.apparatus) {
+        defaults[param.id] = param.default;
+      }
+      startSession(id, defaults);
+    }
+    openExperiment(id);
+  };
   const [search, setSearch] = useState("");
 
   const documents = [
@@ -226,7 +241,7 @@ export default function LibraryView() {
                   <div className="text-right">
                     <button
                       type="button"
-                      onClick={() => openExperiment(doc.experimentId)}
+                      onClick={() => handleStart(doc.experimentId)}
                       className="btn-secondary text-[11px] py-1 px-3 inline-flex items-center gap-1 cursor-pointer"
                     >
                       <span>Open Lab</span>

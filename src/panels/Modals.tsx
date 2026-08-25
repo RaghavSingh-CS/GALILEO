@@ -52,7 +52,7 @@ export function NewExperimentModal({ isOpen, onClose }: ModalProps) {
       for (const param of entry.config.apparatus) {
         defaults[param.id] = param.default;
       }
-      useExperimentStore.getState().resetExperiment(defaults);
+      useExperimentStore.getState().startSession(template, defaults);
     }
     openExperiment(template);
     onClose();
@@ -193,6 +193,7 @@ export function SaveExperimentModal({
 
   useEffect(() => {
     if (isOpen) {
+      // Syncing state on open
       setCustomTitle(`${experimentTitle} Run`);
       setNotes("");
     }
@@ -211,12 +212,13 @@ export function SaveExperimentModal({
 
     saveSession({
       experimentId,
-      title: notes.trim() ? `${finalTitle} (${notes.trim()})` : finalTitle,
+      title: finalTitle,
       subject,
       apparatusValues: { ...apparatusValues },
       observations: [...observations],
       readingsCount: observations.length,
       summaryResult: finalSummary,
+      notes: notes.trim(),
     });
 
     onClose();

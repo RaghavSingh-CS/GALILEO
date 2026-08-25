@@ -19,22 +19,33 @@ import type { ElectricalGraph, MNAResult, ComponentReading, BranchReading } from
 
 export function extractMeasurements(
   graph: ElectricalGraph,
-  mna: MNAResult
+  mna: MNAResult,
+  options?: { noiseFraction?: number }
 ): { readings: ComponentReading[]; branchData: BranchReading[] } {
   const readings: ComponentReading[] = [];
   const branchData: BranchReading[] = [];
 
+  const noise = options?.noiseFraction ?? 0;
+
+  function applyNoise(val: number): number {
+    if (noise <= 0) return val;
+    const u1 = Math.max(1e-6, Math.random());
+    const u2 = Math.random();
+    const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    return val * (1 + z * noise);
+  }
+
   for (const branch of graph.branches) {
     const nodeAVoltage = mna.nodeVoltages.get(branch.nodeA) ?? 0;
     const nodeBVoltage = mna.nodeVoltages.get(branch.nodeB) ?? 0;
-    const voltageDrop = nodeAVoltage - nodeBVoltage;
+    const voltageDrop = applyNoise(nodeAVoltage - nodeBVoltage);
 
     let current = 0;
 
     if (branch.type === 'battery') {
-      current = -(mna.sourceCurrents.get(branch.id) ?? 0);
+      current = applyNoise(-(mna.sourceCurrents.get(branch.id) ?? 0));
     } else if (branch.type === 'ammeter') {
-      current = mna.sourceCurrents.get(branch.id) ?? 0;
+      current = applyNoise(mna.sourceCurrents.get(branch.id) ?? 0);
     } else if (branch.type === 'resistor' || branch.type === 'variable_resistor') {
       current = voltageDrop / branch.value;
     } else if (branch.type === 'voltmeter') {

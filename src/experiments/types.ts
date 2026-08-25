@@ -34,7 +34,7 @@ export interface SimulationEngine {
    * Run the simulation with the given apparatus values.
    * Must be deterministic given the same inputs (noise seed optional).
    */
-  compute(inputs: Record<string, number>): SimulationResult;
+  compute(inputs: Record<string, number>, options?: { noiseFraction?: number }): SimulationResult;
 
   /**
    * Column definitions for the observations table.

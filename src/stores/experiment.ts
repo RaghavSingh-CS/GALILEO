@@ -1,7 +1,28 @@
 import { create } from "zustand";
 import type { Observation } from "@/experiments/types";
+import { applyNodeChanges, applyEdgeChanges, addEdge } from "@xyflow/react";
+import type { Node, Edge, OnNodesChange, OnEdgesChange, Connection } from "@xyflow/react";
+import { cleanStaleEdges, translateToCircuitState, translateValidationMessages } from "@/experiments/physics/circuitAdapter";
+import { getExperiment } from "@/experiments/registry";
+import { solveCircuit } from "@/engines/physics";
+
+export type SessionStatus = 'idle' | 'running' | 'paused' | 'complete' | 'invalid' | 'error';
 
 interface ExperimentSessionStore {
+  // Visual LabState (React Flow)
+  nodes: Node[];
+  edges: Edge[];
+  onNodesChange: OnNodesChange<Node>;
+  onEdgesChange: OnEdgesChange<Edge>;
+  onConnect: (connection: Connection) => void;
+  setNodes: (nodes: Node[]) => void;
+  setEdges: (edges: Edge[]) => void;
+  validationMessages: string[];
+  
+  // Physics Circuit State Output
+  liveCircuitPower: number;
+  liveCircuitCurrent: number;
+
   // Apparatus values keyed by param ID
   apparatusValues: Record<string, number>;
   setApparatusValue: (key: string, value: number) => void;
@@ -13,34 +34,125 @@ interface ExperimentSessionStore {
   clearObservations: () => void;
 
   // Session lifecycle
-  isRunning: boolean;
+  activeExperimentId: string;
+  sessionStatus: SessionStatus;
+  chatContextKey: number;
   observationCounter: number;
+  notes: string;
+  setNotes: (notes: string) => void;
+  startSession: (experimentId: string, defaults: Record<string, number>) => void;
   startExperiment: () => void;
-  resetExperiment: (defaults: Record<string, number>) => void;
-  loadSession: (apparatus: Record<string, number>, observations: Observation[]) => void;
+  pauseExperiment: () => void;
+  setSessionStatus: (status: SessionStatus) => void;
+  loadSession: (experimentId: string, apparatus: Record<string, number>, observations: Observation[], notes?: string) => void;
 }
 
 export const useExperimentStore = create<ExperimentSessionStore>((set, get) => ({
+  nodes: [],
+  edges: [],
+  validationMessages: [],
+  liveCircuitPower: 0,
+  liveCircuitCurrent: 0,
   apparatusValues: {},
   observations: [],
-  isRunning: false,
+  activeExperimentId: '',
+  sessionStatus: 'idle',
+  chatContextKey: Date.now(),
   observationCounter: 0,
+  notes: '',
+  setNotes: (notes) => set({ notes }),
 
-  loadSession: (apparatus, observations) =>
-    set({
-      apparatusValues: { ...apparatus },
-      observations: [...observations],
-      observationCounter: observations.length,
-      isRunning: false,
-    }),
+  setNodes: (nodes) => {
+    set({ nodes });
+    get().onNodesChange([]); // trigger recalculation
+  },
+  
+  setEdges: (edges) => {
+    set({ edges });
+    get().onNodesChange([]); // trigger recalculation
+  },
 
-  setApparatusValue: (key, value) =>
+  onNodesChange: (changes) => {
+    const state = get();
+    const nextNodes = applyNodeChanges(changes, state.nodes);
+    
+    // Check for deletions to clean up edges (PHY-020)
+    const deletedNodes = changes.filter(c => c.type === 'remove').map(c => state.nodes.find(n => n.id === (c as any).id)).filter(Boolean) as Node[];
+    
+    let nextEdges = state.edges;
+    if (deletedNodes.length > 0) {
+      nextEdges = cleanStaleEdges(nextEdges, deletedNodes);
+    }
+    
+    set({ nodes: nextNodes, edges: nextEdges });
+    
+    // Recalculate circuit
+    const circuitState = translateToCircuitState(nextNodes, nextEdges);
+    // Apply apparatus values to the circuit state
+    for (const comp of circuitState.components) {
+      if (comp.type === 'battery' && 'voltage' in state.apparatusValues) {
+        comp.voltage = state.apparatusValues.voltage;
+      }
+      if (comp.type === 'resistor' && 'resistance' in state.apparatusValues) {
+        comp.resistance = state.apparatusValues.resistance;
+      }
+    }
+    const result = solveCircuit(circuitState);
+    
+    let power = 0;
+    let current = 0;
+    if (result.success) {
+      const batReading = result.branchData.find(b => b.type === 'battery');
+      const resReading = result.branchData.find(b => b.type === 'resistor');
+      if (batReading) power = Math.abs(batReading.voltage * batReading.current) * 1000;
+      if (resReading) current = Math.abs(resReading.current) * 1000;
+    }
+    
+    const isChemistry = getExperiment(state.activeExperimentId)?.config.subject === 'chemistry';
+    const messages = isChemistry ? [] : translateValidationMessages(result.validation);
+    let nextStatus = state.sessionStatus;
+    if (messages.length > 0) {
+      if (nextStatus === 'running' || nextStatus === 'idle') nextStatus = 'invalid';
+    } else if (nextStatus === 'invalid') {
+      nextStatus = 'idle';
+    }
+
+    set({ 
+      validationMessages: messages,
+      liveCircuitPower: power,
+      liveCircuitCurrent: current,
+      sessionStatus: nextStatus
+    });
+  },
+
+  onEdgesChange: (changes) => {
+    const state = get();
+    const nextEdges = applyEdgeChanges(changes, state.edges);
+    set({ edges: nextEdges });
+    // Recalculate via onNodesChange trick
+    get().onNodesChange([]);
+  },
+
+  onConnect: (connection) => {
+    const state = get();
+    const nextEdges = addEdge(connection, state.edges);
+    set({ edges: nextEdges });
+    get().onNodesChange([]);
+  },
+
+
+
+  setApparatusValue: (key, value) => {
     set((state) => ({
       apparatusValues: { ...state.apparatusValues, [key]: value },
-    })),
+    }));
+    get().onNodesChange([]);
+  },
 
-  initApparatus: (defaults) =>
-    set({ apparatusValues: { ...defaults } }),
+  initApparatus: (defaults) => {
+    set({ apparatusValues: { ...defaults } });
+    get().onNodesChange([]);
+  },
 
   addObservation: (inputs, outputs) => {
     const count = get().observationCounter + 1;
@@ -58,13 +170,38 @@ export const useExperimentStore = create<ExperimentSessionStore>((set, get) => (
 
   clearObservations: () => set({ observations: [], observationCounter: 0 }),
 
-  startExperiment: () => set({ isRunning: true }),
-
-  resetExperiment: (defaults) =>
+  startSession: (experimentId, defaults) => {
     set({
+      activeExperimentId: experimentId,
+      sessionStatus: 'idle',
+      chatContextKey: Date.now(),
       apparatusValues: { ...defaults },
       observations: [],
-      isRunning: false,
       observationCounter: 0,
+      validationMessages: [],
+      liveCircuitPower: 0,
+      liveCircuitCurrent: 0,
+      notes: '',
+      nodes: [],
+      edges: [],
+    });
+    // Wait for the next tick so UI can render default components
+    setTimeout(() => get().onNodesChange([]), 0);
+  },
+
+  startExperiment: () => set({ sessionStatus: 'running' }),
+
+  pauseExperiment: () => set({ sessionStatus: 'paused' }),
+
+  setSessionStatus: (status) => set({ sessionStatus: status }),
+
+  loadSession: (experimentId, apparatus, observations, notes) =>
+    set({
+      activeExperimentId: experimentId,
+      apparatusValues: { ...apparatus },
+      observations: [...observations],
+      observationCounter: observations.length,
+      sessionStatus: 'idle',
+      notes,
     }),
 }));

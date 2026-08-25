@@ -111,6 +111,18 @@ function checkComponentShape(comp: unknown, index: number): ValidationMessage | 
     };
   }
 
+  for (let i = 0; i < c['terminals'].length; i++) {
+    const t = c['terminals'][i];
+    if (t === null || typeof t !== 'object') {
+      return {
+        ruleId: 'MALFORMED_INPUT',
+        severity: 'error',
+        message: `Component '${c['id']}' has a malformed terminal at index ${i}.`,
+        componentIds: [c['id'] as string],
+      };
+    }
+  }
+
   return null;
 }
 

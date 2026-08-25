@@ -33,7 +33,7 @@ export * from './types';
  *   untrusted runtime data (from adapters, persisted state, or React Flow)
  *   is safely handled before any type assertions occur.
  */
-export function solveCircuit(state: CircuitState): SimulationResult {
+export function solveCircuit(state: CircuitState, options?: { noiseFraction?: number }): SimulationResult {
   // 1. Runtime input-integrity validation (PHY-002/003/004/005/006/024)
   //    Accepts unknown so malformed adapter output doesn't bypass checks.
   const integrityMessages = validateIntegrity(state as unknown);
@@ -63,7 +63,7 @@ export function solveCircuit(state: CircuitState): SimulationResult {
   // 5. Solve MNA (PHY-009: voltmeter-aware reachability inside solveMNA)
   try {
     const mnaResult = solveMNA(graph);
-    const { readings, branchData } = extractMeasurements(graph, mnaResult);
+    const { readings, branchData } = extractMeasurements(graph, mnaResult, options);
     return { success: true, readings, branchData, validation };
   } catch (e) {
     // Unknown numerical failure — fallback DEGENERATE_TOPOLOGY.

@@ -141,8 +141,16 @@ export default function GalileoChat() {
   const experimentId = useNavigationStore((s) => s.activeExperimentId);
   const apparatusValues = useExperimentStore((s) => s.apparatusValues);
   const observations = useExperimentStore((s) => s.observations);
+  const chatContextKey = useExperimentStore((s) => s.chatContextKey);
+  const sessionStatus = useExperimentStore((s) => s.sessionStatus);
+  const validationMessages = useExperimentStore((s) => s.validationMessages);
 
   const entry = experimentId ? getExperiment(experimentId) : undefined;
+
+  useEffect(() => {
+    setMessages([INITIAL_MESSAGE]);
+    setInput("");
+  }, [chatContextKey]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -174,6 +182,8 @@ export default function GalileoChat() {
         experimentId: experimentId || "ohms-law",
         experimentTitle: entry?.config.title || "Ohm's Law",
         aim: entry?.config.aim,
+        sessionStatus,
+        validationMessages,
         apparatusValues,
         observations: observations.map((obs) => ({
           inputs: obs.inputs,
@@ -221,7 +231,15 @@ export default function GalileoChat() {
     }
   };
 
-  const quickPrompts = [
+  const quickPrompts = experimentId === "titration-analysis" ? [
+    "Verify equivalence point calculation",
+    "Explain the pH curve shape",
+    "What is the indicator color transition?"
+  ] : experimentId === "series-parallel" ? [
+    "Verify Kirchhoff's laws",
+    "Calculate equivalent resistance",
+    "Explain the current distribution"
+  ] : [
     "Verify Ohm's Law linearity from observations",
     "How does resistance affect the slope in V-I plot?",
     "Calculate theoretical power dissipation",

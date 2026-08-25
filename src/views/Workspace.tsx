@@ -3,6 +3,8 @@ import { useNavigationStore } from "@/stores/navigation";
 import { useExperimentStore } from "@/stores/experiment";
 import { useSettingsStore } from "@/stores/settings";
 import { getExperiment, getAllExperiments } from "@/experiments/registry";
+import { analyzeOhmsLaw } from "@/experiments/physics/ohmsLawAnalysis";
+import CircuitFlowCanvas from "@/renderers/circuit-flow/CircuitFlowCanvas";
 import GalileoChat from "@/panels/GalileoChat";
 import { SaveExperimentModal } from "@/panels/Modals";
 import {
@@ -29,15 +31,21 @@ export default function Workspace() {
   const initApparatus = useExperimentStore((s) => s.initApparatus);
   const observations = useExperimentStore((s) => s.observations);
   const addObservation = useExperimentStore((s) => s.addObservation);
-  const resetExperiment = useExperimentStore((s) => s.resetExperiment);
+  const startSession = useExperimentStore((s) => s.startSession);
 
   const graphLineType = useSettingsStore((s) => s.graphLineType);
   const getSweepIntervalMs = useSettingsStore((s) => s.getSweepIntervalMs);
-
-  const [isAutoSweeping, setIsAutoSweeping] = useState(false);
+  const liveCircuitPower = useExperimentStore((s) => s.liveCircuitPower);
+  const liveCircuitCurrent = useExperimentStore((s) => s.liveCircuitCurrent);
+  const sessionStatus = useExperimentStore((s) => s.sessionStatus);
+  const setSessionStatus = useExperimentStore((s) => s.setSessionStatus);
+  const notes = useExperimentStore((s) => s.notes);
+  const setNotes = useExperimentStore((s) => s.setNotes);
+  const validationMessages = useExperimentStore((s) => s.validationMessages);
   const [activeTab, setActiveTab] = useState<"schematic" | "procedure">("schematic");
   const [saveSuccessToast, setSaveSuccessToast] = useState(false);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [isLargeScreen, setIsLargeScreen] = useState(window.innerWidth >= 1024);
 
   // ── Resizable Panel Dimensions (Pixels) ──
   const [apparatusWidth, setApparatusWidth] = useState(280);
@@ -67,6 +75,7 @@ export default function Workspace() {
   const allExperiments = getAllExperiments();
   const activeExpId = experimentId || "ohms-law";
   const entry = getExperiment(activeExpId) || allExperiments[0];
+  const config = entry.config;
 
   useEffect(() => {
     if (!entry) return;
@@ -103,38 +112,44 @@ export default function Workspace() {
     return () => window.removeEventListener("resize", handleWindowResize);
   }, [apparatusWidth, obsWidth, chatWidth, galileoPanelOpen]);
 
+  // Compute live engine outputs (memoized so reading matches display)
+  const noiseFraction = useSettingsStore((s) => s.getNoiseFraction());
+  const liveResult = useMemo(() => {
+    return entry && Object.keys(apparatusValues).length > 0
+      ? entry.engine.compute(apparatusValues, { noiseFraction })
+      : null;
+  }, [entry, apparatusValues, noiseFraction]);
+
   const handleTakeReading = () => {
-    if (!entry) return;
-    const outputs = entry.engine.compute(apparatusValues);
-    addObservation(apparatusValues, outputs);
+    if (!entry || !liveResult) return;
+    addObservation(apparatusValues, liveResult);
   };
 
   const handleReset = () => {
     if (!entry) return;
-    setIsAutoSweeping(false);
     const defaults: Record<string, number> = {};
     for (const param of entry.config.apparatus) {
       defaults[param.id] = param.default;
     }
-    resetExperiment(defaults);
+    startSession(activeExpId, defaults);
   };
 
   // Automated sweep for Ohm's Law or Titration with configurable speed
   useEffect(() => {
-    if (!isAutoSweeping || !entry) return;
+    if (sessionStatus !== "running" || !entry) return;
     const intervalMs = getSweepIntervalMs();
 
     if (entry.config.id === "ohms-law") {
       const interval = setInterval(() => {
         const currentV = apparatusValues.voltage ?? 0;
         if (currentV >= 20) {
-          setIsAutoSweeping(false);
+          setSessionStatus("complete");
           return;
         }
         const nextV = Math.min(20, Math.round((currentV + 2) * 10) / 10);
         setApparatusValue("voltage", nextV);
         const newVals = { ...apparatusValues, voltage: nextV };
-        const outputs = entry.engine.compute(newVals);
+        const outputs = entry.engine.compute(newVals, { noiseFraction });
         addObservation(newVals, outputs);
       }, intervalMs);
       return () => clearInterval(interval);
@@ -142,76 +157,49 @@ export default function Workspace() {
       const interval = setInterval(() => {
         const currentVol = apparatusValues.volumeAdded ?? 0;
         const rate = apparatusValues.flowRate ?? 0.5;
-        if (currentVol >= 35) {
-          setIsAutoSweeping(false);
+        if (currentVol >= 50) {
+          setSessionStatus("complete");
           return;
         }
-        const nextVol = Math.min(35, Math.round((currentVol + rate * 2) * 10) / 10);
+        const nextVol = Math.min(50, Math.round((currentVol + rate * 2) * 10) / 10);
         setApparatusValue("volumeAdded", nextVol);
         const newVals = { ...apparatusValues, volumeAdded: nextVol };
-        const outputs = entry.engine.compute(newVals);
+        const outputs = entry.engine.compute(newVals, { noiseFraction });
         addObservation(newVals, outputs);
       }, intervalMs);
       return () => clearInterval(interval);
     }
-  }, [isAutoSweeping, apparatusValues, entry, addObservation, setApparatusValue, getSweepIntervalMs]);
+  }, [sessionStatus, apparatusValues, entry, addObservation, setApparatusValue, getSweepIntervalMs, noiseFraction]);
 
-  // Compute live engine outputs
-  const liveResult =
-    entry && Object.keys(apparatusValues).length > 0
-      ? entry.engine.compute(apparatusValues)
-      : null;
+
 
   // Chart data formatting
   const chartData = useMemo(() => {
-    if (activeExpId === "ohms-law") {
-      return observations.map((obs, i) => ({
+    const isCircuit = entry?.config.subject === "physics";
+    let data;
+    if (isCircuit) {
+      data = observations.map((obs, i) => ({
         index: i + 1,
         x: obs.inputs.voltage ?? 0,
         y: obs.outputs.current ?? 0,
         power: obs.outputs.power ?? 0,
       }));
     } else {
-      return observations.map((obs, i) => ({
+      data = observations.map((obs, i) => ({
         index: i + 1,
         x: obs.inputs.volumeAdded ?? 0,
         y: obs.outputs.ph ?? 7,
       }));
     }
-  }, [observations, activeExpId]);
+    return data.sort((a, b) => a.x - b.x);
+  }, [observations, activeExpId, entry?.config.subject]);
 
   // Computed statistical results
   const computedStats = useMemo(() => {
     if (observations.length < 2) return null;
 
     if (activeExpId === "ohms-law") {
-      const n = observations.length;
-      let sumV = 0;
-      let sumI = 0;
-      let sumVI = 0;
-      let sumV2 = 0;
-      for (const obs of observations) {
-        const V = obs.inputs.voltage ?? 0;
-        const I_A = (obs.outputs.current ?? 0) / 1000;
-        sumV += V;
-        sumI += I_A;
-        sumVI += V * I_A;
-        sumV2 += V * V;
-      }
-      const denom = n * sumV2 - sumV * sumV;
-      if (denom === 0) return null;
-      const slope_conductance = (n * sumVI - sumV * sumI) / denom;
-      const calculatedR = slope_conductance > 0 ? 1 / slope_conductance : 0;
-      const setR = apparatusValues.resistance ?? 100;
-      const errorPct = setR > 0 ? Math.abs((calculatedR - setR) / setR) * 100 : 0;
-
-      return {
-        label1: "Calculated Slope R",
-        val1: `${calculatedR.toFixed(1)} Ω`,
-        label2: "Experimental Error",
-        val2: `±${errorPct.toFixed(2)}%`,
-        summary: `Calculated R: ${calculatedR.toFixed(1)} Ω (±${errorPct.toFixed(2)}% error)`,
-      };
+      return analyzeOhmsLaw(observations, apparatusValues.resistance ?? 100);
     } else {
       const vAnalyte = apparatusValues.analyteVolume ?? 25;
       const calculatedM = 0.1;
@@ -227,31 +215,25 @@ export default function Workspace() {
 
   const exportCSV = () => {
     if (observations.length === 0) return;
-    const isOhms = entry.config.id === "ohms-law";
-    const headers = isOhms
-      ? ["Reading #", "Voltage (V)", "Resistance (Ω)", "Current (mA)", "Power (mW)"]
-      : ["Reading #", "Titrant Added (mL)", "Analyte Vol (mL)", "Sensor pH"];
+    const isCircuit = entry.config.subject === "physics";
+    const headers = isCircuit
+      ? "ID,Voltage(V),Resistance(Ohms),Current(mA),Power(mW)\n"
+      : "ID,Titrant(mL),pH,TotalVol(mL)\n";
 
-    const rows = observations.map((obs) =>
-      isOhms
-        ? [
-            obs.id,
-            obs.inputs.voltage ?? 0,
-            obs.inputs.resistance ?? 0,
-            obs.outputs.current ?? 0,
-            obs.outputs.power ?? 0,
-          ]
-        : [
-            obs.id,
-            obs.inputs.volumeAdded ?? 0,
-            obs.inputs.analyteVolume ?? 25,
-            obs.outputs.ph ?? 7,
-          ]
-    );
+    const rows = observations
+      .map((obs) => {
+        if (isCircuit) {
+          return `${obs.id},${obs.inputs.voltage ?? 0},${
+            obs.inputs.resistance ?? 100
+          },${obs.outputs.current ?? 0},${obs.outputs.power ?? 0}`;
+        }
+        return `${obs.id},${obs.inputs.volumeAdded ?? 0},${
+          obs.outputs.ph ?? 7
+        },${obs.outputs.totalVol ?? 25}`;
+      })
+      .join("\n");
 
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
+    const csvContent = "data:text/csv;charset=utf-8," + headers + rows;
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -288,6 +270,7 @@ export default function Workspace() {
       rafId.current = requestAnimationFrame(() => {
         const { type, startX, startY, startDim } = dragInfo.current;
         const winW = window.innerWidth;
+        setIsLargeScreen(winW >= 1024);
         const minCenter = 180;
         const splittersWidth = 30;
 
@@ -334,13 +317,12 @@ export default function Workspace() {
     };
   }, [activeDrag, apparatusWidth, obsWidth, chatWidth, galileoPanelOpen]);
 
-  const { config } = entry;
-  const isOhms = config.id === "ohms-law";
+  const isCircuit = entry?.config.subject === "physics";
 
   const currentVoltage = apparatusValues.voltage ?? 5;
   const currentResistance = apparatusValues.resistance ?? 100;
-  const liveCurrent = liveResult?.current ?? 0;
-  const livePower = liveResult?.power ?? 0;
+  const liveCurrent = isCircuit ? liveCircuitCurrent : (liveResult?.current ?? 0);
+  const livePower = isCircuit ? liveCircuitPower : (liveResult?.power ?? 0);
 
   const titrantVol = apparatusValues.volumeAdded ?? 0;
   const stirrerRPM = apparatusValues.stirrerSpeed ?? 300;
@@ -435,6 +417,7 @@ export default function Workspace() {
           <button
             type="button"
             onClick={goToSettings}
+            aria-label="Laboratory Settings"
             className="text-[#c2c8c4] hover:text-[#e5e2e1] p-1.5 rounded hover:bg-[#2a2a2a] cursor-pointer"
             title="Laboratory Settings & Noise"
           >
@@ -464,11 +447,11 @@ export default function Workspace() {
       </header>
 
       {/* ── Main Workspace Body with Dynamic Clamped Columns ── */}
-      <div className="flex-1 flex overflow-hidden w-full max-w-full">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden w-full max-w-full">
         {/* ── 1. Left Panel: Apparatus Controls ── */}
         <aside
-          style={{ width: `${apparatusWidth}px` }}
-          className="shrink-0 bg-[#1c1b1b] flex flex-col overflow-y-auto p-5 gap-6 border-r border-[#424845]/50 min-w-0"
+          style={{ width: isLargeScreen ? `${apparatusWidth}px` : '100%' }}
+          className="shrink-0 bg-[#1c1b1b] flex flex-col lg:overflow-y-auto p-5 gap-6 border-b lg:border-b-0 lg:border-r border-[#424845]/50 min-w-0"
         >
           <div className="border-b border-[#424845] pb-3 flex items-center justify-between">
             <div>
@@ -476,7 +459,7 @@ export default function Workspace() {
                 Apparatus Controls
               </h2>
               <p className="font-body-md text-xs text-[#c2c8c4]">
-                {isOhms ? "Circuit calibration" : "Titration parameters"}
+                {isCircuit ? "Circuit calibration" : "Titration parameters"}
               </p>
             </div>
             <div className="w-2 h-2 rounded-full bg-[#8da399] pulse-live" />
@@ -522,31 +505,51 @@ export default function Workspace() {
             })}
           </div>
 
+          {!isCircuit && (
+            <button
+              type="button"
+              onClick={() => {
+                const currentVol = apparatusValues.volumeAdded ?? 0;
+                const rate = apparatusValues.flowRate ?? 0.5;
+                setApparatusValue("volumeAdded", Math.min(50, currentVol + rate));
+              }}
+              className="mt-2 w-full font-label-caps text-[11px] py-2.5 rounded bg-[#2a2a2a] hover:bg-[#353535] text-[#e5e2e1] border border-[#424845]/50 flex items-center justify-center gap-2 cursor-pointer transition-colors active:scale-95"
+            >
+              <span className="material-symbols-outlined text-[14px]">water_drop</span>
+              Add {apparatusValues.flowRate ?? 0.5} mL Titrant
+            </button>
+          )}
+
           {/* Auto Simulation Sweep */}
           <div className="bg-[#20201f] border border-[#424845] rounded-lg p-3.5 flex flex-col gap-2">
             <div className="flex justify-between items-center">
               <span className="font-label-caps text-[10px] text-[#c2c8c4]">
-                {isOhms ? "AUTO VOLTAGE SWEEP" : "CONTINUOUS TITRATION"}
+                {isCircuit ? "AUTO VOLTAGE SWEEP" : "CONTINUOUS TITRATION"}
               </span>
               <span className="font-data-mono text-[10px] text-[#8da399]">
-                {isAutoSweeping ? "RUNNING..." : "IDLE"}
+                {sessionStatus.toUpperCase()}
               </span>
             </div>
             <button
               type="button"
-              onClick={() => setIsAutoSweeping(!isAutoSweeping)}
+              disabled={sessionStatus === "invalid"}
+              onClick={() =>
+                setSessionStatus(sessionStatus === "running" ? "paused" : "running")
+              }
               className={`w-full py-2 rounded text-xs font-label-caps flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                isAutoSweeping
+                sessionStatus === "invalid"
+                  ? "bg-[#353535] text-[#8c8c8c] border border-[#424845] cursor-not-allowed opacity-50"
+                  : sessionStatus === "running"
                   ? "bg-[#93000a] text-[#ffdad6] border border-[#ffb4ab]/30 hover:bg-[#690005]"
                   : "bg-[#353535] hover:bg-[#424845] text-[#e5e2e1] border border-[#424845]"
               }`}
             >
               <span className="material-symbols-outlined text-[16px]">
-                {isAutoSweeping ? "pause" : "fast_forward"}
+                {sessionStatus === "running" ? "pause" : "fast_forward"}
               </span>
-              {isAutoSweeping
+              {sessionStatus === "running"
                 ? "Pause Simulation"
-                : isOhms
+                : isCircuit
                 ? "Automated Sweep (0 → 20V)"
                 : "Continuous Flow Simulation"}
             </button>
@@ -558,7 +561,7 @@ export default function Workspace() {
               LIVE SENSOR TELEMETRY
             </span>
             <div className="grid grid-cols-2 gap-3">
-              {isOhms ? (
+              {isCircuit ? (
                 <>
                   <div className="bg-[#131313] border border-[#333333] p-2.5 rounded">
                     <div className="font-label-caps text-[9px] text-[#c2c8c4] mb-1">
@@ -603,11 +606,31 @@ export default function Workspace() {
             </div>
           </div>
 
+          {/* Validation Message UI */}
+          {sessionStatus === "invalid" && validationMessages && validationMessages.length > 0 && (
+            <div className="bg-[#4a1919] border border-[#ffb4ab] rounded p-2.5 flex flex-col gap-1.5 mt-2 shadow-inner">
+              <div className="flex items-center gap-1.5 font-label-caps text-[10px] text-[#ffb4ab] font-bold">
+                <span className="material-symbols-outlined text-[14px]">error</span>
+                SYSTEM FAULT PREVENTS MEASUREMENT
+              </div>
+              <ul className="text-xs text-[#e5e2e1] list-disc list-inside space-y-1">
+                {validationMessages.map((msg, i) => (
+                  <li key={i}>{msg}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* Primary Take Reading Action Button */}
           <button
             type="button"
             onClick={handleTakeReading}
-            className="mt-auto w-full bg-[#8da399] hover:bg-[#b5ccc1] text-[#21342d] font-label-caps text-xs py-3.5 rounded-lg transition-all flex justify-center items-center gap-2 font-bold shadow-lg cursor-pointer active:scale-95 border border-[#8da399]"
+            disabled={sessionStatus === "invalid"}
+            className={`mt-auto w-full font-label-caps text-xs py-3.5 rounded-lg transition-all flex justify-center items-center gap-2 font-bold shadow-lg border ${
+              sessionStatus === "invalid"
+                ? "bg-[#353535] text-[#8c8c8c] border-[#424845] cursor-not-allowed opacity-50"
+                : "bg-[#8da399] hover:bg-[#b5ccc1] text-[#21342d] cursor-pointer active:scale-95 border-[#8da399]"
+            }`}
             title="Record current physical measurement into observations table"
           >
             <span className="material-symbols-outlined text-[18px]">add_circle</span>
@@ -616,29 +639,31 @@ export default function Workspace() {
         </aside>
 
         {/* ── Drag Handle: Apparatus Resizer ── */}
-        <div
-          onMouseDown={(e) => startDrag("apparatus", apparatusWidth, e)}
-          className={`w-2 hover:w-2 bg-[#131313] hover:bg-[#8da399]/20 active:bg-[#8da399]/40 cursor-col-resize transition-colors shrink-0 z-20 flex items-center justify-center relative group ${
-            activeDrag === "apparatus" ? "bg-[#8da399]/30" : ""
-          }`}
-          title="Drag to resize Apparatus Controls panel"
-        >
+        {isLargeScreen && (
           <div
-            className={`w-0.5 h-full transition-colors ${
-              activeDrag === "apparatus"
-                ? "bg-[#8da399]"
-                : "bg-[#424845] group-hover:bg-[#8da399]"
+            onMouseDown={(e) => startDrag("apparatus", apparatusWidth, e)}
+            className={`w-2 hover:w-2 bg-[#131313] hover:bg-[#8da399]/20 active:bg-[#8da399]/40 cursor-col-resize transition-colors shrink-0 z-20 flex items-center justify-center relative group ${
+              activeDrag === "apparatus" ? "bg-[#8da399]/30" : ""
             }`}
-          />
-          <div className="absolute top-1/2 -translate-y-1/2 w-1.5 h-6 bg-[#353535] group-hover:bg-[#8da399] rounded-full flex flex-col justify-center items-center gap-0.5 shadow-sm pointer-events-none">
-            <div className="w-0.5 h-0.5 bg-[#e5e2e1] rounded-full" />
-            <div className="w-0.5 h-0.5 bg-[#e5e2e1] rounded-full" />
-            <div className="w-0.5 h-0.5 bg-[#e5e2e1] rounded-full" />
+            title="Drag to resize Apparatus Controls panel"
+          >
+            <div
+              className={`w-0.5 h-full transition-colors ${
+                activeDrag === "apparatus"
+                  ? "bg-[#8da399]"
+                  : "bg-[#424845] group-hover:bg-[#8da399]"
+              }`}
+            />
+            <div className="absolute top-1/2 -translate-y-1/2 w-1.5 h-6 bg-[#353535] group-hover:bg-[#8da399] rounded-full flex flex-col justify-center items-center gap-0.5 shadow-sm pointer-events-none">
+              <div className="w-0.5 h-0.5 bg-[#e5e2e1] rounded-full" />
+              <div className="w-0.5 h-0.5 bg-[#e5e2e1] rounded-full" />
+              <div className="w-0.5 h-0.5 bg-[#e5e2e1] rounded-full" />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* ── 2. Center Panel: Canvas / Schematic ── */}
-        <section className="flex-1 flex flex-col bg-[#131313] overflow-hidden min-w-[180px] relative">
+        <section className="flex-1 flex flex-col min-w-[200px] bg-[#131313] relative border-b lg:border-b-0">
           <div className="h-10 border-b border-[#424845] bg-[#1c1b1b] flex items-center justify-between px-4 shrink-0">
             <div className="flex items-center gap-2">
               <button
@@ -651,9 +676,9 @@ export default function Workspace() {
                 }`}
               >
                 <span className="material-symbols-outlined text-[14px]">
-                  {isOhms ? "electrical_services" : "science"}
+                  {isCircuit ? "electrical_services" : "science"}
                 </span>
-                {isOhms ? "Live Circuit Schematic" : "Live Titration Apparatus"}
+                {isCircuit ? "Live Circuit Schematic" : "Live Titration Apparatus"}
               </button>
               <button
                 type="button"
@@ -672,7 +697,7 @@ export default function Workspace() {
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-[#8da399] pulse-live" />
               <span className="font-label-caps text-[10px] text-[#8da399]">
-                SYSTEM ACTIVE
+                {sessionStatus === "running" ? "SYSTEM ACTIVE" : sessionStatus === "invalid" ? "SYSTEM FAULT" : "SYSTEM READY"}
               </span>
             </div>
           </div>
@@ -682,10 +707,10 @@ export default function Workspace() {
             <div className="flex-1 relative bg-[#131313] flex flex-col items-center justify-center p-6 overflow-hidden">
               <div className="absolute inset-0 bg-[linear-gradient(rgba(66,72,69,0.15)_1px,transparent_1px),linear-gradient(90deg,rgba(66,72,69,0.15)_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
 
-              {/* Schematic 1: Ohm's Law Circuit */}
-              {isOhms ? (
-                <div className="relative w-full max-w-2xl h-80 bg-[#1c1b1b]/80 border border-[#424845] rounded-xl p-6 flex flex-col justify-between shadow-2xl backdrop-blur-sm z-10">
-                  <div className="flex justify-between items-center border-b border-[#424845]/50 pb-2">
+              {/* Schematic 1: Circuit Bench */}
+              {isCircuit ? (
+                <div className="relative w-full h-full bg-[#1c1b1b]/80 border border-[#424845] rounded-xl p-0 shadow-2xl backdrop-blur-sm z-10 overflow-hidden flex flex-col">
+                  <div className="flex justify-between items-center border-b border-[#424845]/50 p-2 shrink-0 bg-[#20201f]">
                     <span className="font-label-caps text-[10px] text-[#c2c8c4]">
                       DC CIRCUIT BENCH · CLOSED LOOP
                     </span>
@@ -694,46 +719,11 @@ export default function Workspace() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3 md:gap-6 items-center my-auto">
-                    <div className="bg-[#20201f] border border-[#333333] rounded-lg p-3 flex flex-col items-center gap-1.5 relative min-w-0">
-                      <span className="material-symbols-outlined text-[#8da399] text-2xl">
-                        battery_charging_full
-                      </span>
-                      <span className="font-label-caps text-[9px] text-[#c2c8c4] truncate max-w-full">
-                        DC VOLTAGE
-                      </span>
-                      <div className="font-data-mono text-base md:text-lg text-[#d1e8dd] font-bold truncate">
-                        {currentVoltage.toFixed(1)} <span className="text-xs">V</span>
-                      </div>
-                      <div className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#8da399]" />
-                    </div>
-
-                    <div className="bg-[#20201f] border border-[#333333] rounded-lg p-3 flex flex-col items-center gap-1.5 min-w-0">
-                      <div className="w-8 h-8 rounded-full border-2 border-[#8da399] flex items-center justify-center font-headline-sm font-bold text-[#8da399] text-xs bg-[#131313]">
-                        A
-                      </div>
-                      <span className="font-label-caps text-[9px] text-[#c2c8c4] truncate max-w-full">
-                        AMMETER
-                      </span>
-                      <div className="font-data-mono text-base md:text-lg text-[#b5ccc1] font-bold truncate">
-                        {liveCurrent.toFixed(2)} <span className="text-xs">mA</span>
-                      </div>
-                    </div>
-
-                    <div className="bg-[#20201f] border border-[#333333] rounded-lg p-3 flex flex-col items-center gap-1.5 min-w-0">
-                      <span className="material-symbols-outlined text-[#bdc9c8] text-2xl">
-                        tune
-                      </span>
-                      <span className="font-label-caps text-[9px] text-[#c2c8c4] truncate max-w-full">
-                        RESISTOR
-                      </span>
-                      <div className="font-data-mono text-base md:text-lg text-[#bdc9c8] font-bold truncate">
-                        {currentResistance.toFixed(0)} <span className="text-xs">Ω</span>
-                      </div>
-                    </div>
+                  <div className="flex-1 w-full h-full">
+                    <CircuitFlowCanvas />
                   </div>
 
-                  <div className="w-full bg-[#131313] border border-[#424845] rounded p-2 flex justify-between items-center text-xs font-data-mono text-[#c2c8c4]">
+                  <div className="w-full bg-[#131313] border-t border-[#424845] p-2 flex justify-between items-center text-xs font-data-mono text-[#c2c8c4] shrink-0">
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-[#8da399] animate-pulse" />
                       <span>Conductance: {(1 / currentResistance).toFixed(4)} S</span>
@@ -791,12 +781,12 @@ export default function Workspace() {
                     <div className="w-10 h-5 border-2 border-[#424845] flex items-center justify-center relative z-20 bg-[#131313]">
                       <div
                         className="w-3.5 h-1.5 bg-[#8da399] rounded-sm transition-transform duration-300"
-                        style={{ transform: isAutoSweeping ? "rotate(90deg)" : "rotate(0deg)" }}
+                        style={{ transform: sessionStatus === "running" ? "rotate(90deg)" : "rotate(0deg)" }}
                       />
                     </div>
 
                     <div className="w-2 h-10 relative overflow-hidden flex justify-center">
-                      {isAutoSweeping && (
+                      {sessionStatus === "running" && (
                         <div className="w-1.5 h-1.5 bg-[#8da399] rounded-full animate-bounce mt-1" />
                       )}
                     </div>
@@ -845,13 +835,13 @@ export default function Workspace() {
                 <div className="w-px h-4 bg-[#424845]" />
                 <button
                   type="button"
-                  onClick={() => setIsAutoSweeping(!isAutoSweeping)}
+                  onClick={() => setSessionStatus(sessionStatus === "running" ? "paused" : "running")}
                   className="text-[#c2c8c4] hover:text-[#e5e2e1] transition-colors flex items-center gap-1 font-label-caps text-[11px] cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[16px]">
-                    {isAutoSweeping ? "pause" : "fast_forward"}
+                    {sessionStatus === "running" ? "pause" : "fast_forward"}
                   </span>
-                  {isAutoSweeping ? "Pause" : "Sweep"}
+                  {sessionStatus === "running" ? "Pause" : "Sweep"}
                 </button>
                 <button
                   type="button"
@@ -894,31 +884,33 @@ export default function Workspace() {
         </section>
 
         {/* ── Drag Handle: Observations Resizer ── */}
-        <div
-          onMouseDown={(e) => startDrag("observations", obsWidth, e)}
-          className={`w-2 hover:w-2 bg-[#131313] hover:bg-[#8da399]/20 active:bg-[#8da399]/40 cursor-col-resize transition-colors shrink-0 z-20 flex items-center justify-center relative group ${
-            activeDrag === "observations" ? "bg-[#8da399]/30" : ""
-          }`}
-          title="Drag to resize Observations panel"
-        >
+        {isLargeScreen && (
           <div
-            className={`w-0.5 h-full transition-colors ${
-              activeDrag === "observations"
-                ? "bg-[#8da399]"
-                : "bg-[#424845] group-hover:bg-[#8da399]"
+            onMouseDown={(e) => startDrag("observations", obsWidth, e)}
+            className={`w-2 hover:w-2 bg-[#131313] hover:bg-[#8da399]/20 active:bg-[#8da399]/40 cursor-col-resize transition-colors shrink-0 z-20 flex items-center justify-center relative group ${
+              activeDrag === "observations" ? "bg-[#8da399]/30" : ""
             }`}
-          />
-          <div className="absolute top-1/2 -translate-y-1/2 w-1.5 h-6 bg-[#353535] group-hover:bg-[#8da399] rounded-full flex flex-col justify-center items-center gap-0.5 shadow-sm pointer-events-none">
-            <div className="w-0.5 h-0.5 bg-[#e5e2e1] rounded-full" />
-            <div className="w-0.5 h-0.5 bg-[#e5e2e1] rounded-full" />
-            <div className="w-0.5 h-0.5 bg-[#e5e2e1] rounded-full" />
+            title="Drag to resize Observations panel"
+          >
+            <div
+              className={`w-0.5 h-full transition-colors ${
+                activeDrag === "observations"
+                  ? "bg-[#8da399]"
+                  : "bg-[#424845] group-hover:bg-[#8da399]"
+              }`}
+            />
+            <div className="absolute top-1/2 -translate-y-1/2 w-1.5 h-6 bg-[#353535] group-hover:bg-[#8da399] rounded-full flex flex-col justify-center items-center gap-0.5 shadow-sm pointer-events-none">
+              <div className="w-0.5 h-0.5 bg-[#e5e2e1] rounded-full" />
+              <div className="w-0.5 h-0.5 bg-[#e5e2e1] rounded-full" />
+              <div className="w-0.5 h-0.5 bg-[#e5e2e1] rounded-full" />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* ── 3. Right Panel: Observation Table & Real-Time Graph ── */}
         <aside
-          style={{ width: `${obsWidth}px` }}
-          className="shrink-0 bg-[#1c1b1b] flex flex-col overflow-hidden border-r border-[#424845]/50 min-w-0"
+          style={{ width: isLargeScreen ? `${obsWidth}px` : '100%' }}
+          className="shrink-0 bg-[#1c1b1b] flex flex-col lg:overflow-hidden min-w-0"
         >
           {/* Header */}
           <div className="p-3 border-b border-[#424845] bg-[#20201f] flex justify-between items-center shrink-0">
@@ -944,6 +936,7 @@ export default function Workspace() {
                 type="button"
                 onClick={exportCSV}
                 disabled={observations.length === 0}
+                aria-label="Export CSV"
                 className="text-[#c2c8c4] hover:text-[#8da399] transition-colors p-1 rounded hover:bg-[#353535] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                 title="Export CSV"
               >
@@ -969,15 +962,16 @@ export default function Workspace() {
                 <thead className="bg-[#20201f] sticky top-0 border-b border-[#424845] text-[#c2c8c4] font-label-caps text-[10px]">
                   <tr>
                     <th className="p-2 text-center w-8">#</th>
-                    <th className="p-2 text-right">
-                      {isOhms ? "VOLTAGE (V)" : "TITRANT (mL)"}
-                    </th>
-                    <th className="p-2 text-right">
-                      {isOhms ? "CURRENT (mA)" : "SENSOR pH"}
-                    </th>
-                    <th className="p-2 text-right">
-                      {isOhms ? "POWER (mW)" : "TOTAL VOL (mL)"}
-                    </th>
+                    {config.apparatus.map((app) => (
+                      <th key={`input-${app.id}`} className="p-2 text-right">
+                        {app.label} ({app.unit})
+                      </th>
+                    ))}
+                    {entry.engine.outputColumns.map((col) => (
+                      <th key={`output-${col.key}`} className="p-2 text-right">
+                        {col.label} {col.unit ? `(${col.unit})` : ''}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#424845]/40 text-[#e5e2e1]">
@@ -987,21 +981,16 @@ export default function Workspace() {
                       className="hover:bg-[#8da399]/5 transition-colors"
                     >
                       <td className="p-2 text-center text-[#c2c8c4]">{obs.id}</td>
-                      <td className="p-2 text-right text-[#b5ccc1]">
-                        {isOhms
-                          ? (obs.inputs.voltage ?? 0).toFixed(1)
-                          : (obs.inputs.volumeAdded ?? 0).toFixed(1)}
-                      </td>
-                      <td className="p-2 text-right text-[#8da399]">
-                        {isOhms
-                          ? (obs.outputs.current ?? 0).toFixed(2)
-                          : (obs.outputs.ph ?? 7).toFixed(2)}
-                      </td>
-                      <td className="p-2 text-right text-[#bdc9c8]">
-                        {isOhms
-                          ? (obs.outputs.power ?? 0).toFixed(2)
-                          : (obs.outputs.totalVol ?? 25).toFixed(1)}
-                      </td>
+                      {config.apparatus.map((app) => (
+                        <td key={`input-${obs.id}-${app.id}`} className="p-2 text-right text-[#b5ccc1]">
+                          {(obs.inputs[app.id] ?? 0).toFixed(1)}
+                        </td>
+                      ))}
+                      {entry.engine.outputColumns.map((col) => (
+                        <td key={`output-${obs.id}-${col.key}`} className="p-2 text-right text-[#8da399]">
+                          {(obs.outputs[col.key] ?? 0).toFixed(2)}
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
@@ -1034,12 +1023,12 @@ export default function Workspace() {
           {/* Computed Results Card */}
           <div className="p-3 border-b border-[#424845] bg-[#20201f] shrink-0">
             <div className="font-label-caps text-[10px] text-[#8da399] mb-1.5 font-semibold uppercase">
-              {isOhms ? "COMPUTED OHMIC FIT" : "TITRATION ANALYSIS RESULTS"}
+              {isCircuit ? "COMPUTED OHMIC FIT" : "TITRATION ANALYSIS RESULTS"}
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs font-data-mono">
               <div className="bg-[#131313] p-1.5 rounded border border-[#333333]">
                 <div className="text-[9px] text-[#c2c8c4] uppercase">
-                  {computedStats?.label1 || (isOhms ? "Calculated Slope R" : "Analyte Molarity")}
+                  {computedStats?.label1 || (isCircuit ? "Calculated Slope R" : "Analyte Molarity")}
                 </div>
                 <div className="text-sm text-[#e5e2e1] font-semibold mt-0.5">
                   {computedStats?.val1 || "--"}
@@ -1047,7 +1036,7 @@ export default function Workspace() {
               </div>
               <div className="bg-[#131313] p-1.5 rounded border border-[#333333]">
                 <div className="text-[9px] text-[#c2c8c4] uppercase">
-                  {computedStats?.label2 || (isOhms ? "Experimental Error" : "Equivalence Vol")}
+                  {computedStats?.label2 || (isCircuit ? "Experimental Error" : "Equivalence Vol")}
                 </div>
                 <div className="text-sm text-[#b5ccc1] font-semibold mt-0.5">
                   {computedStats?.val2 || "--"}
@@ -1060,14 +1049,14 @@ export default function Workspace() {
           <div className="flex-1 p-3 flex flex-col bg-[#131313] min-h-[140px] overflow-hidden">
             <div className="flex justify-between items-center mb-1 shrink-0">
               <span className="font-label-caps text-[10px] text-[#c2c8c4]">
-                {isOhms ? "V-I CHARACTERISTIC PLOT" : "pH NEUTRALIZATION CURVE"}
+                {isCircuit ? "V-I CHARACTERISTIC PLOT" : "pH NEUTRALIZATION CURVE"}
               </span>
               <span className="font-data-mono text-[9px] text-[#8da399]">
-                {graphLineType} curve fit
+                {graphLineType} line style
               </span>
             </div>
 
-            <div className="flex-1 w-full h-full min-h-[120px]">
+            <div className="flex-1 w-full min-h-[120px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
                   data={chartData}
@@ -1076,8 +1065,8 @@ export default function Workspace() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#333333" />
                   <XAxis
                     dataKey="x"
-                    name={isOhms ? "Voltage (V)" : "Volume Added (mL)"}
-                    unit={isOhms ? "V" : "mL"}
+                    name={isCircuit ? "Voltage (V)" : "Volume Added (mL)"}
+                    unit={isCircuit ? "V" : "mL"}
                     stroke="#424845"
                     tick={{
                       fontSize: 10,
@@ -1087,9 +1076,9 @@ export default function Workspace() {
                   />
                   <YAxis
                     dataKey="y"
-                    name={isOhms ? "Current (mA)" : "pH"}
-                    unit={isOhms ? "mA" : ""}
-                    domain={isOhms ? [0, "auto"] : [0, 14]}
+                    name={isCircuit ? "Current (mA)" : "pH"}
+                    unit={isCircuit ? "mA" : ""}
+                    domain={isCircuit ? [0, "auto"] : [0, 14]}
                     stroke="#424845"
                     tick={{
                       fontSize: 10,
@@ -1123,6 +1112,20 @@ export default function Workspace() {
                 </LineChart>
               </ResponsiveContainer>
             </div>
+          </div>
+
+          {/* ── Experiment Notes ── */}
+          <div className="flex-1 min-h-[100px] bg-[#1a1a1a] border-t border-[#424845] p-3 flex flex-col shrink-0">
+            <h4 className="text-xs font-label-caps text-[#c2c8c4] mb-2 flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[14px]">edit_note</span>
+              Experiment Notes
+            </h4>
+            <textarea
+              className="w-full flex-1 bg-[#131313] border border-[#424845]/60 rounded-md p-2 text-sm text-[#e5e2e1] resize-none focus:outline-none focus:border-[#8da399] font-body-md placeholder-[#c2c8c4]/40"
+              placeholder="Record your observations, hypotheses, and conclusions here..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
           </div>
         </aside>
 
