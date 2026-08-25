@@ -3,6 +3,10 @@ dist/
 .env
 .DS_Store
 .context/
+.agents/
 .ai/
 .notes/
-physics-improvements.md
+physics-improvements*.md
+*.db
+*-db/
+[a-f0-9]*-[a-f0-9]*-[a-f0-9]*-[a-f0-9]*-[a-f0-9]*/

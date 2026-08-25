@@ -321,4 +321,64 @@ describe('Validator', () => {
     // The circuit is short-circuited (ammeter across battery), which takes priority
     expect(messages.some(m => m.ruleId === 'SHORT_CIRCUIT')).toBe(true);
   });
+
+  // ── PHY-010: Parallel ideal battery detection ─────────────────────────────
+
+  it('PARALLEL_IDEAL_SOURCES: two equal batteries in parallel returns error', () => {
+    // Two 9V batteries both connected positive→nodeA, negative→nodeB
+    const b1 = makeBattery('b1', 9);
+    const b2 = makeBattery('b2', 9);
+    const r1 = makeResistor('r1');
+    // Wire: b1+ -- r1a -- r1b -- b1- / b2+ -- (same nodeA) / b2- -- (same nodeB)
+    const state: CircuitState = {
+      components: [b1, b2, r1],
+      wires: [
+        makeWire('w1', 'b1:positive', 'r1:a'),
+        makeWire('w2', 'r1:b', 'b1:negative'),
+        makeWire('w3', 'b2:positive', 'r1:a'),   // b2 shares same nodes as b1
+        makeWire('w4', 'b2:negative', 'b1:negative')
+      ]
+    };
+    const messages = validateGraph(getGraph(state), state);
+    const parallelMsg = messages.find(m => m.ruleId === 'PARALLEL_IDEAL_SOURCES');
+    expect(parallelMsg).toBeDefined();
+    expect(parallelMsg!.severity).toBe('error');
+    expect(parallelMsg!.componentIds).toContain('b1');
+    expect(parallelMsg!.componentIds).toContain('b2');
+  });
+
+  it('PARALLEL_IDEAL_SOURCES: two unequal batteries in parallel returns error', () => {
+    const b1 = makeBattery('b1', 5);
+    const b2 = makeBattery('b2', 3);  // different voltage
+    const r1 = makeResistor('r1');
+    const state: CircuitState = {
+      components: [b1, b2, r1],
+      wires: [
+        makeWire('w1', 'b1:positive', 'r1:a'),
+        makeWire('w2', 'r1:b', 'b1:negative'),
+        makeWire('w3', 'b2:positive', 'r1:a'),
+        makeWire('w4', 'b2:negative', 'b1:negative')
+      ]
+    };
+    const messages = validateGraph(getGraph(state), state);
+    expect(messages.some(m => m.ruleId === 'PARALLEL_IDEAL_SOURCES')).toBe(true);
+  });
+
+  it('PARALLEL_IDEAL_SOURCES: two batteries in series do NOT trigger the rule', () => {
+    // Series: b1+ -- r1a -- r1b -- b2+ -- b2- -- b1-
+    const b1 = makeBattery('b1', 5);
+    const b2 = makeBattery('b2', 5);
+    const r1 = makeResistor('r1');
+    const state: CircuitState = {
+      components: [b1, b2, r1],
+      wires: [
+        makeWire('w1', 'b1:positive', 'r1:a'),
+        makeWire('w2', 'r1:b', 'b2:positive'),
+        makeWire('w3', 'b2:negative', 'b1:negative')
+      ]
+    };
+    const messages = validateGraph(getGraph(state), state);
+    expect(messages.some(m => m.ruleId === 'PARALLEL_IDEAL_SOURCES')).toBe(false);
+  });
 });
+

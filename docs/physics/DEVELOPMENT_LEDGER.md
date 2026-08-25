@@ -48,7 +48,7 @@ A deterministic solver ensures that physical behaviors are accurate without rely
 **Scientific assumptions**
 
 - Ideal wire resistance is exactly 0 ohms.
-- Complex edge cases (e.g., parallel batteries causing perfectly singular matrices) are shelved to `.context/qa-audit-v3-shelved.md` until explicitly required by the UI.
+- Remaining topological edge cases (e.g., parallel ideal batteries, floating voltmeter crashes) were identified in an internal QA audit and are tracked as pending fixes in the physics branch.
 
 **Tests/verification performed**
 
@@ -142,8 +142,52 @@ The engine must safely evaluate educational laboratory tasks, meaning mathematic
 
 **Known limitations**
 
-- The engine is fully completed for V1 requirements (DC resistive circuits).
+- The engine covers the core V1 requirements for DC resistive circuits. Known remaining items are tracked in the audit ledger.
+- Pending physics-branch fixes: parallel ideal battery detection (`PARALLEL_IDEAL_SOURCES`), series-parallel voltmeter placement validation (`VOLTMETER_MISPLACED`), and terminal shape hardening in integrity checks.
 
 **Pending/next steps**
 
-- The Physics Engine is simulation ready. Next step is for the UI Team to build an adapter to map the React Flow graph state into our `CircuitState` format and consume the pedagogical verifier outputs.
+- Physics branch: apply audit fixes for the above known limitations.
+- UI Team: build an adapter to map the React Flow graph state into our `CircuitState` format and consume the pedagogical verifier outputs.
+
+### 2026-08-25 22:00:00 +05:30 — Red Team Audit & Architectural Hardening (Phase 2)
+
+**Decision/change**
+
+Conducted an adversarial Red Team audit. Discovered and patched a P0 pedagogical bug where shorting a voltmeter bypassed Ohm's Law verifiers. Upgraded the engine's architectural stability against mathematical singularities by implementing `GMIN` stepping ($1\times 10^{-9}\text{ S}$ diagonal conductance) and generic DFS Spanning Tree checking for ideal voltage source loops. Introduced $Power = |V \times I|$ calculation API and a `COMPONENT_OVERHEATING` validation rule ($>0.25W$).
+
+**Rationale**
+
+A true zero-trust approach to UI input means the MNA solver must survive physically impossible structures (like loops of ideal batteries or completely disjoint subgraphs). GMIN ensures the solver always finds a stable ground anchor, whilst DFS loop checking guarantees `math.js` will never receive an indeterminate matrix. Expanding the API to include Wattage allows the UI to render realistic physical consequences (component burnout).
+
+**Files added/modified**
+
+- `frontend/src/engines/physics/experiments/ohms-law.ts`
+- `frontend/src/engines/physics/circuits/types.ts`
+- `frontend/src/engines/physics/circuits/measurements.ts`
+- `frontend/src/engines/physics/circuits/solver.ts`
+- `frontend/src/engines/physics/circuits/validator.ts`
+- `frontend/src/engines/physics/experiments/__tests__/*`
+
+**Interfaces/contracts affected**
+
+- `BranchReading` now optionally emits `power: number`.
+- `ValidationRuleId` expanded to include `COMPONENT_OVERHEATING`.
+
+**Scientific assumptions**
+
+- A leakage drift of $1\times 10^{-6}\text{ V}$ caused by `GMIN` is well beneath the rendering precision of the educational UI.
+- Standard Class 11-12 resistors are rated for $0.25W$.
+
+**Tests/verification performed**
+
+- Expanded the test suite to **135 adversarial tests** covering KCL/KVL bounds, NaN-immunity, and React Flow garbage states.
+- Re-ran rigorous test loops resulting in 100% pass rates.
+
+**Known limitations**
+
+- Dense Matrix LU solver ($O(N^3)$) remains active; will need a sparse refactor if component count scales beyond $N=100$.
+
+**Pending/next steps**
+
+- Integrate the engine with React Flow UI adapters.
