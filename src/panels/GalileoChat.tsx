@@ -138,6 +138,8 @@ export default function GalileoChat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const idCounter = useRef(1);
+  const autoBriefingSent = useRef<number>(0);
+  const autoReportSent = useRef<number>(0);
 
   const experimentId = useNavigationStore((s) => s.activeExperimentId);
   const apparatusValues = useExperimentStore((s) => s.apparatusValues);
@@ -151,7 +153,34 @@ export default function GalileoChat() {
   useEffect(() => {
     setMessages([INITIAL_MESSAGE]);
     setInput("");
+    // Reset report guard when a new session starts
+    autoReportSent.current = 0;
   }, [chatContextKey]);
+
+  // ── Auto-briefing: fires when a new experiment session starts ──
+  useEffect(() => {
+    if (!entry || !chatContextKey || chatContextKey === autoBriefingSent.current) return;
+    autoBriefingSent.current = chatContextKey;
+
+    const title = entry.config.title;
+    const briefingPrompt = `A new "${title}" experiment session has just started. Briefly introduce the experiment's objective, the key scientific principle behind it, and what the student should expect to observe during the procedure. Keep it to 3-4 sentences.`;
+
+    // Small delay to let the chat UI reset first
+    const timer = setTimeout(() => sendQueryRef.current(briefingPrompt), 600);
+    return () => clearTimeout(timer);
+  }, [chatContextKey, entry]);
+
+  // ── Auto-report: fires when experiment completes ──
+  useEffect(() => {
+    if (sessionStatus !== "complete" || !entry) return;
+    if (autoReportSent.current === chatContextKey) return;
+    autoReportSent.current = chatContextKey;
+
+    const reportPrompt = `The experiment is now complete with ${useExperimentStore.getState().observations.length} recorded observations. Provide a brief analysis report: summarize the key findings from the data, whether the results align with the expected theoretical outcome, and highlight any notable anomalies or patterns.`;
+
+    const timer = setTimeout(() => sendQueryRef.current(reportPrompt), 800);
+    return () => clearTimeout(timer);
+  }, [sessionStatus, entry, chatContextKey]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -162,6 +191,8 @@ export default function GalileoChat() {
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
+
+  const sendQueryRef = useRef<(q: string) => void>(() => {});
 
   const sendQuery = async (queryText: string) => {
     const trimmed = queryText.trim();
@@ -224,6 +255,8 @@ export default function GalileoChat() {
       textareaRef.current?.focus();
     }
   };
+
+  sendQueryRef.current = sendQuery;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
