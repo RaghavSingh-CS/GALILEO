@@ -169,7 +169,7 @@ export default function Workspace() {
       }, intervalMs);
       return () => clearInterval(interval);
     }
-  }, [sessionStatus, apparatusValues, entry, addObservation, setApparatusValue, getSweepIntervalMs, noiseFraction]);
+  }, [sessionStatus, apparatusValues, entry, addObservation, setApparatusValue, getSweepIntervalMs, noiseFraction, setSessionStatus]);
 
 
 
@@ -192,7 +192,7 @@ export default function Workspace() {
       }));
     }
     return data.sort((a, b) => a.x - b.x);
-  }, [observations, activeExpId, entry?.config.subject]);
+  }, [observations, entry?.config.subject]);
 
   // Computed statistical results
   const computedStats = useMemo(() => {

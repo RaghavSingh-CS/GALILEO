@@ -73,7 +73,7 @@ export default function CircuitFlowCanvas() {
         { id: 'e3', source: 'res1', sourceHandle: 'b', target: 'bat1', targetHandle: 'positive' }
       ]);
     }
-  }, []);
+  }, [nodes.length, setNodes, setEdges]);
 
   return (
     <div className="w-full h-full relative">

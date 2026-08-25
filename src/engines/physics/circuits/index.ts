@@ -65,7 +65,7 @@ export function solveCircuit(state: CircuitState, options?: { noiseFraction?: nu
     const mnaResult = solveMNA(graph);
     const { readings, branchData } = extractMeasurements(graph, mnaResult, options);
     return { success: true, readings, branchData, validation };
-  } catch (e) {
+  } catch {
     // Unknown numerical failure — fallback DEGENERATE_TOPOLOGY.
     // Known degenerate topologies are caught earlier in validateGraph (PHY-010)
     // and return specific rule IDs. This catch is a safety net only.

@@ -80,7 +80,8 @@ function formatChatMessageContent(raw: string) {
           );
         }
 
-        if (/^\d+[\.\)]\s+/.test(trimmed)) {
+        // Detect numbered lists like "1. ", "2) ", etc.
+        if (/^\d+[.)]\s+/.test(trimmed)) {
           return (
             <div key={lIdx} className="font-headline-sm font-semibold text-[#8da399] pt-1.5 pb-0.5">
               {renderFormattedInline(trimmed)}

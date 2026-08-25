@@ -140,7 +140,7 @@ export function solveMNA(graph: ElectricalGraph): MNAResult {
     } else {
       x = result as number[];
     }
-  } catch (err) {
+  } catch {
     throw new Error('SINGULAR_MATRIX');
   }
 
