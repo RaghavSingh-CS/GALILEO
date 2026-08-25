@@ -47,6 +47,11 @@ export const titrationEngine: SimulationEngine = {
     const volAdded = inputs.volumeAdded ?? 0;
     const analyteVolume = inputs.analyteVolume ?? 25;
 
+    // Both are 0.1M in our model
+    const equivalenceVolume = analyteVolume;
+    const isNearEquivalence = Math.abs(volAdded - equivalenceVolume) < 3.0;
+    const isNeutralized = volAdded >= equivalenceVolume;
+
     const stoichiometricPH = computePHFromStoichiometry(volAdded, analyteVolume);
     const noiseFraction = options?.noiseFraction ?? 0;
     const noisyPH = gaussianNoise(stoichiometricPH, noiseFraction * 1.5);
@@ -56,6 +61,9 @@ export const titrationEngine: SimulationEngine = {
       ph: Math.round(clampedPH * 100) / 100,
       volAdded: Math.round(volAdded * 100) / 100,
       totalVol: Math.round((analyteVolume + volAdded) * 100) / 100,
+      equivalenceVolume,
+      isNearEquivalence,
+      isNeutralized
     };
   },
 };

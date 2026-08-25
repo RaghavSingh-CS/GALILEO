@@ -327,8 +327,9 @@ export default function Workspace() {
   const titrantVol = apparatusValues.volumeAdded ?? 0;
   const stirrerRPM = apparatusValues.stirrerSpeed ?? 300;
   const livePH = liveResult?.ph ?? 11.45;
-  const isNearEquivalence = Math.abs(titrantVol - 25) < 3.0;
-  const isNeutralized = titrantVol >= 25;
+  const analyteVol = apparatusValues.analyteVolume ?? 25;
+  const isNearEquivalence = liveResult?.isNearEquivalence ?? (Math.abs(titrantVol - analyteVol) < 3.0);
+  const isNeutralized = liveResult?.isNeutralized ?? (titrantVol >= analyteVol);
 
   return (
     <div className="h-screen w-screen max-w-full flex flex-col bg-[#131313] text-[#e5e2e1] overflow-hidden selection:bg-[#8da399] selection:text-[#263932]">
@@ -795,10 +796,10 @@ export default function Workspace() {
                       <div
                         className={`w-full transition-all duration-500 ease-linear ${
                           isNeutralized
-                            ? "bg-[#353535]/50"
-                            : "bg-[#e4beba]/70"
+                            ? "bg-[#e4beba]/70"
+                            : "bg-[#353535]/50"
                         }`}
-                        style={{ height: `${Math.min(80, 30 + (titrantVol / 50) * 40)}%` }}
+                        style={{ height: `${Math.min(80, 30 + (titrantVol / 100) * 40)}%` }}
                       />
                       <div
                         className="absolute bottom-1.5 w-6 h-1.5 bg-[#e5e2e1] rounded-full shadow-sm"

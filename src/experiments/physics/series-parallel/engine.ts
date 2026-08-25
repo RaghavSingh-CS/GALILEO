@@ -1,6 +1,6 @@
 import type { SimulationEngine, SimulationResult } from "../../types";
 import { useExperimentStore } from "@/stores/experiment";
-import { translateToCircuitState, cleanStaleEdges } from "../circuitAdapter";
+import { translateToCircuitState } from "../circuitAdapter";
 import { verifySeriesParallelExperiment } from "@/engines/physics";
 
 export const seriesParallelEngine: SimulationEngine = {

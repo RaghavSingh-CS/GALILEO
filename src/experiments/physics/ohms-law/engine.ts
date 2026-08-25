@@ -1,6 +1,6 @@
 import type { SimulationEngine, SimulationResult } from "../../types";
 import { solveCircuit } from "@/engines/physics/circuits";
-import type { CircuitState, Terminal, Wire } from "@/engines/physics/circuits";
+import type { CircuitState, Terminal } from "@/engines/physics/circuits";
 
 export const ohmsLawEngine: SimulationEngine = {
   outputColumns: [

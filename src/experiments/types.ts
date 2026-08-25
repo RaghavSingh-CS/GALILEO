@@ -19,7 +19,7 @@ export interface ExperimentConfig {
 }
 
 export interface SimulationResult {
-  [key: string]: number;
+  [key: string]: any;
 }
 
 export interface Observation {

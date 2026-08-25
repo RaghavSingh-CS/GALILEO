@@ -13,7 +13,7 @@ export const titrationConfig: ExperimentConfig = {
       label: "Titrant Added (HCl)",
       unit: "mL",
       min: 0,
-      max: 50,
+      max: 100,
       step: 0.5,
       default: 0,
     },

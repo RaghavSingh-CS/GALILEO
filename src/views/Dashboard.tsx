@@ -1,7 +1,7 @@
 import { useNavigationStore } from "@/stores/navigation";
 import { useExperimentStore } from "@/stores/experiment";
 import { useEffect, useState } from "react";
-import { getAllExperiments, getExperiment } from "@/experiments/registry";
+import { getExperiment } from "@/experiments/registry";
 
 interface ExperimentCardProps {
   id: string;
@@ -77,7 +77,6 @@ export default function Dashboard() {
 
   const ohmsLaw = getExperiment("ohms-law");
   const titration = getExperiment("titration-analysis");
-  const seriesParallel = getExperiment("series-parallel");
 
   const handleStart = (id: string) => {
     const entry = getExperiment(id);
