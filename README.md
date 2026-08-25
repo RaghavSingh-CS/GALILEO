@@ -1,4 +1,8 @@
-# GALILEO Lab
+# GALILEO
+
+**Guided Adaptive Laboratory for Interactive Learning & Experimental Observation**
+
+An interactive science sandbox for performing virtual experiments with intelligent AI-assisted guidance and evaluation.
 
 GALILEO Lab is a web-based educational laboratory environment that simulates physics and chemistry experiments (e.g., Ohm's Law and Titration). It includes an AI assistant (powered by Google Gemini) to guide users through the experimental process.
 
