@@ -95,6 +95,43 @@ function detectZeroResistanceShorts(graph: ElectricalGraph): ValidationMessage[]
   return messages;
 }
 
+/**
+ * PHY-010 — Detects parallel ideal voltage sources.
+ *
+ * Two batteries sharing the exact same pair of topological nodes create an
+ * indeterminate or contradictory MNA system:
+ *   - Equal voltages: solver silently returns an arbitrary current split.
+ *   - Unequal voltages: solver throws SINGULAR_MATRIX.
+ * Neither outcome is useful for a student. Detect and block before MNA.
+ */
+function detectParallelBatteries(graph: ElectricalGraph): ValidationMessage[] {
+  const messages: ValidationMessage[] = [];
+  const batteryBranches = graph.branches.filter(b => b.type === 'battery');
+
+  for (let i = 0; i < batteryBranches.length; i++) {
+    for (let j = i + 1; j < batteryBranches.length; j++) {
+      const a = batteryBranches[i];
+      const b = batteryBranches[j];
+
+      // Check if the two batteries share the exact same node pair (either orientation)
+      const sameNodes =
+        (a.nodeA === b.nodeA && a.nodeB === b.nodeB) ||
+        (a.nodeA === b.nodeB && a.nodeB === b.nodeA);
+
+      if (sameNodes) {
+        messages.push({
+          ruleId: 'PARALLEL_IDEAL_SOURCES',
+          severity: 'error',
+          message: `Batteries '${a.componentId}' and '${b.componentId}' are connected in parallel. Parallel ideal voltage sources create an indeterminate or contradictory system.`,
+          componentIds: [a.componentId, b.componentId],
+        });
+      }
+    }
+  }
+
+  return messages;
+}
+
 export function validateGraph(graph: ElectricalGraph, state: CircuitState): ValidationMessage[] {
   const messages: ValidationMessage[] = [];
 
@@ -161,6 +198,10 @@ export function validateGraph(graph: ElectricalGraph, state: CircuitState): Vali
 
   // ── SHORT_CIRCUIT (PHY-007: full zero-resistance path detection) ─────────
   messages.push(...detectZeroResistanceShorts(graph));
+
+  // ── PARALLEL_IDEAL_SOURCES (PHY-010) ─────────────────────────────────────
+  // Must run before MNA to catch both equal and unequal parallel battery cases.
+  messages.push(...detectParallelBatteries(graph));
 
   // PHY-008: Use conductive components for all connectivity-based checks.
   // This ensures voltmeter-only links do not falsely connect subgraphs.

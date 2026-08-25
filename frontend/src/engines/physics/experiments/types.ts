@@ -26,7 +26,8 @@ export type SeriesParallelIssueCode =
   | 'EXTRANEOUS_COMPONENTS'
   | 'NOT_PURE_SERIES_OR_PARALLEL'
   | 'CIRCUIT_NOT_CLOSED'
-  | 'SHORT_CIRCUIT';
+  | 'SHORT_CIRCUIT'
+  | 'VOLTMETER_MISPLACED';
 
 export interface SeriesParallelResult {
   usability: ExperimentUsability;
