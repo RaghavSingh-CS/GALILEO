@@ -45,4 +45,3 @@ Tailwind CSS is used for all styling, providing a highly customizable and respon
   - **Phase 8 (Physics Core):** Built the robust physics deterministic MNA solver to handle complex DC circuits.
   - **Phase 9 (Pedagogical Verifiers):** Hardened the physics engine with strict pedagogical rules (Ohm's Law, Series/Parallel) and a "Red Team" audit to prevent cheating or invalid topologies.
   - **Phase 10 (Frontend Integration & Stabilization):** Finalized UI/UX, routing, dynamic titration visual feedback (HSL phenolphthalein color matching), resolved all UI integration issues, and strictly enforced the `SimulationResult` engine contracts across the frontend. Validated with 0-error strict linting.
-- **[2026-08-25 20:36]:** Fixed TypeScript compiler flag (`ignoreDeprecations: "5.0"`) in `tsconfig.app.json` to resolve an invalid value error.
