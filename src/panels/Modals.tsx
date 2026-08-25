@@ -173,6 +173,7 @@ interface SaveExperimentModalProps {
   apparatusValues: Record<string, number>;
   observations: any[];
   summaryResult?: string;
+  initialNotes?: string;
   onSuccess?: () => void;
 }
 
@@ -185,6 +186,7 @@ export function SaveExperimentModal({
   apparatusValues,
   observations,
   summaryResult,
+  initialNotes = "",
   onSuccess,
 }: SaveExperimentModalProps) {
   const saveSession = useHistoryStore((s) => s.saveSession);
@@ -195,9 +197,9 @@ export function SaveExperimentModal({
     if (isOpen) {
       // Syncing state on open
       setCustomTitle(`${experimentTitle} Run`);
-      setNotes("");
+      setNotes(initialNotes);
     }
-  }, [isOpen, experimentTitle]);
+  }, [isOpen, experimentTitle, initialNotes]);
 
   if (!isOpen) return null;
 

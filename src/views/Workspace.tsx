@@ -343,6 +343,7 @@ export default function Workspace() {
         apparatusValues={apparatusValues}
         observations={observations}
         summaryResult={computedStats?.summary}
+        initialNotes={notes}
         onSuccess={() => {
           setSaveSuccessToast(true);
           setTimeout(() => setSaveSuccessToast(false), 2500);
@@ -798,7 +799,7 @@ export default function Workspace() {
                         style={{ 
                           height: `${Math.min(80, 30 + (titrantVol / 100) * 40)}%`,
                           backgroundColor: isNeutralized 
-                            ? `rgba(228, 110, 150, ${Math.min(0.9, 0.2 + ((titrantVol - analyteVol) / 10) * 0.7)})`
+                            ? `hsl(330, ${Math.min(100, 60 + ((titrantVol - analyteVol) / 10) * 40)}%, ${Math.max(30, 80 - ((titrantVol - analyteVol) / 10) * 50)}%)`
                             : "rgba(229, 226, 225, 0.1)"
                         }}
                       />
