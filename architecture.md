@@ -147,3 +147,47 @@ The engine must safely evaluate educational laboratory tasks, meaning mathematic
 **Pending/next steps**
 
 - The Physics Engine is simulation ready. Next step is for the UI Team to build an adapter to map the React Flow graph state into our `CircuitState` format and consume the pedagogical verifier outputs.
+
+### 2026-08-25 20:20:00 +05:30 — Frontend Engine Integration & UI Hardening (Phase 10)
+
+**Decision/change**
+
+Integrated the physics and chemistry engines into the frontend shell, implemented robust hash-based routing, and resolved all 24 UI/UX and engine-integration audit issues. Titration logic was refactored to read dynamic equivalence and stoichiometric states from the chemistry engine rather than hardcoded UI values. The titration visual feedback now accurately models phenolphthalein behavior using an HSL color transition to correctly darken past the equivalence point.
+
+**Rationale**
+
+The frontend needed to be strictly decoupled from hardcoded scientific assumptions and solely rely on the engine contracts (`SimulationResult` and `ValidationMessage`). The UI state (Zustand) is now the single source of truth for topology, ensuring React Flow and the Physics Engine cannot diverge.
+
+**Files added/modified**
+
+- `frontend/src/views/Workspace.tsx`
+- `frontend/src/panels/GalileoChat.tsx`
+- `frontend/src/panels/Modals.tsx`
+- `frontend/src/experiments/chemistry/titration-analysis/engine.ts`
+- `frontend/src/experiments/chemistry/titration-analysis/config.ts`
+- `frontend/src/experiments/types.ts`
+- `frontend/src/stores/experiment.ts`
+- `frontend/src/stores/history.ts`
+
+**Interfaces/contracts affected**
+
+- Widened `SimulationResult` to accept dynamic boolean state flags (`isNearEquivalence`, `isNeutralized`).
+- Updated `SaveExperimentModal` to properly accept and persist user-written notes from the Workspace.
+
+**Scientific assumptions**
+
+- Phenolphthalein behavior transitions from light pink to dark magenta when excess titrant is added past equivalence in a base-in-acid/acid-in-base scenario.
+
+**Tests/verification performed**
+
+- `npm run build` succeeds cleanly.
+- `oxlint` linting passes with zero errors.
+- Visual QA confirms titration colors darken correctly and equivalence warnings trigger dynamically.
+
+**Known limitations**
+
+- Auto-run sweep progression is functionally correct for the demo but still lives in `Workspace.tsx` rather than adapter-owned run plans.
+
+**Pending/next steps**
+
+- Project is ready for deployment / E2E user testing.
