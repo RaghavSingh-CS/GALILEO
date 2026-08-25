@@ -157,11 +157,11 @@ export default function Workspace() {
       const interval = setInterval(() => {
         const currentVol = apparatusValues.volumeAdded ?? 0;
         const rate = apparatusValues.flowRate ?? 0.5;
-        if (currentVol >= 50) {
+        if (currentVol >= 100) {
           setSessionStatus("complete");
           return;
         }
-        const nextVol = Math.min(50, Math.round((currentVol + rate * 2) * 10) / 10);
+        const nextVol = Math.min(100, Math.round((currentVol + rate * 2) * 10) / 10);
         setApparatusValue("volumeAdded", nextVol);
         const newVals = { ...apparatusValues, volumeAdded: nextVol };
         const outputs = entry.engine.compute(newVals, { noiseFraction });
