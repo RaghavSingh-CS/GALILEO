@@ -23,9 +23,10 @@ GALILEO Lab is a web-based educational laboratory environment that simulates phy
    ```
 
 2. Set up environment variables:
-   Create a `.env` file in the root and add your Gemini API key:
+   Create a `.env` file in the root and add your Gemini API key. The server reads the key from `GALILEO_API_KEY`:
    ```env
-   GEMINI_API_KEY=your_api_key_here
+   GALILEO_API_KEY=your_gemini_api_key_here
+   GALILEO_MODEL=gemini-3.6-flash
    ```
 
 3. Run the development server:
