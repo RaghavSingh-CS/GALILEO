@@ -794,12 +794,13 @@ export default function Workspace() {
 
                     <div className="w-28 h-20 border-2 border-[#424845] rounded-b-2xl rounded-t-sm relative flex items-end justify-center overflow-hidden bg-[#1c1b1b] z-10 shadow-lg">
                       <div
-                        className={`w-full transition-all duration-500 ease-linear ${
-                          isNeutralized
-                            ? "bg-[#e4beba]/70"
-                            : "bg-[#353535]/50"
-                        }`}
-                        style={{ height: `${Math.min(80, 30 + (titrantVol / 100) * 40)}%` }}
+                        className="w-full transition-all duration-500 ease-linear"
+                        style={{ 
+                          height: `${Math.min(80, 30 + (titrantVol / 100) * 40)}%`,
+                          backgroundColor: isNeutralized 
+                            ? `rgba(228, 110, 150, ${Math.min(0.9, 0.2 + ((titrantVol - analyteVol) / 10) * 0.7)})`
+                            : "rgba(229, 226, 225, 0.1)"
+                        }}
                       />
                       <div
                         className="absolute bottom-1.5 w-6 h-1.5 bg-[#e5e2e1] rounded-full shadow-sm"
