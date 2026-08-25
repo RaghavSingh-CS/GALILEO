@@ -64,6 +64,22 @@ export function solveCircuit(state: CircuitState): SimulationResult {
   try {
     const mnaResult = solveMNA(graph);
     const { readings, branchData } = extractMeasurements(graph, mnaResult);
+
+    // PHY-025: Post-solve pedagogical check for component destruction (overheating)
+    // Most standard educational resistors are 1/4 Watt.
+    const overheatingComponentIds = branchData
+      .filter(b => (b.type === 'resistor' || b.type === 'variable_resistor') && b.power && b.power > 0.25)
+      .map(b => b.componentId);
+
+    if (overheatingComponentIds.length > 0) {
+      validation.push({
+        ruleId: 'COMPONENT_OVERHEATING',
+        severity: 'warning',
+        message: 'Warning: One or more resistors are dissipating more than 0.25W of power and will overheat.',
+        componentIds: overheatingComponentIds
+      });
+    }
+
     return { success: true, readings, branchData, validation };
   } catch (e) {
     // Unknown numerical failure — fallback DEGENERATE_TOPOLOGY.

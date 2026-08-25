@@ -7,6 +7,15 @@ export type ComponentType =
   | 'ammeter'
   | 'voltmeter';
 
+export type ValidationRuleId =
+  | 'SHORT_CIRCUIT'
+  | 'OPEN_CIRCUIT'
+  | 'DEGENERATE_TOPOLOGY'
+  | 'PARALLEL_IDEAL_SOURCES'
+  | 'ALL_SOURCES_NO_RESISTANCE'
+  | 'INVALID_TERMINAL_ROLE'
+  | 'COMPONENT_OVERHEATING'; // PHY-025: Power rating exceeded
+
 // ─── Terminal ──────────────────────────────────────────
 export interface Terminal {
   id: string;           // Format: "{componentId}:{role}"
@@ -121,6 +130,7 @@ export interface BranchReading {
   type: ComponentType;
   voltage: number;
   current: number;
+  power?: number; // PHY-025: Power dissipated/supplied (in Watts)
 }
 
 // ─── Validation ────────────────────────────────────────
