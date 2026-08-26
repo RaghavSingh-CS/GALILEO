@@ -34,6 +34,9 @@ export * from './types';
  *   is safely handled before any type assertions occur.
  */
 export function solveCircuit(state: CircuitState, options?: { noiseFraction?: number }): SimulationResult {
+  // Retained for compatibility with the shared experiment interface.
+  // Instrument uncertainty belongs above the deterministic physics engine.
+  void options;
   // 1. Runtime input-integrity validation (PHY-002/003/004/005/006/024)
   //    Accepts unknown so malformed adapter output doesn't bypass checks.
   const integrityMessages = validateIntegrity(state as unknown);
@@ -63,7 +66,7 @@ export function solveCircuit(state: CircuitState, options?: { noiseFraction?: nu
   // 5. Solve MNA (PHY-009: voltmeter-aware reachability inside solveMNA)
   try {
     const mnaResult = solveMNA(graph);
-    const { readings, branchData } = extractMeasurements(graph, mnaResult, options);
+    const { readings, branchData } = extractMeasurements(graph, mnaResult);
 
     // PHY-025: Post-solve pedagogical check for component destruction (overheating)
     // Most standard educational resistors are 1/4 Watt.

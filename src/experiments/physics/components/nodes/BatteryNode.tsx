@@ -6,7 +6,6 @@ import type { NodeProps } from '@xyflow/react';
 export function BatteryNode({ id, data }: NodeProps) {
   const voltage = typeof data?.voltage === 'number' ? data.voltage : 5;
   const valRef = useRef(voltage);
-  valRef.current = voltage;
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -16,6 +15,10 @@ export function BatteryNode({ id, data }: NodeProps) {
       intervalRef.current = null;
     }
   }, []);
+
+  useEffect(() => {
+    valRef.current = voltage;
+  }, [voltage]);
 
   useEffect(() => {
     document.addEventListener('pointerup', stop);

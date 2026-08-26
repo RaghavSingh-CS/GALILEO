@@ -6,7 +6,6 @@ import type { NodeProps } from '@xyflow/react';
 export function ResistorNode({ id, data }: NodeProps) {
   const resistance = typeof data?.resistance === 'number' ? data.resistance : 100;
   const valRef = useRef(resistance);
-  valRef.current = resistance;
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -16,6 +15,10 @@ export function ResistorNode({ id, data }: NodeProps) {
       intervalRef.current = null;
     }
   }, []);
+
+  useEffect(() => {
+    valRef.current = resistance;
+  }, [resistance]);
 
   useEffect(() => {
     document.addEventListener('pointerup', stop);

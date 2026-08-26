@@ -47,6 +47,9 @@ export function verifyOhmsLawExperiment(state: CircuitState): OhmsLawResult {
 
   if (isShortCircuit) issues.push('SHORT_CIRCUIT');
   if (isNotClosed) issues.push('CIRCUIT_NOT_CLOSED');
+  if (result.validation.some(v => v.severity === 'error') && !isShortCircuit && !isNotClosed) {
+    issues.push('INVALID_CIRCUIT');
+  }
 
   let usability: ExperimentUsability = 'unusable';
   let voltageReadingV: number | null = null;

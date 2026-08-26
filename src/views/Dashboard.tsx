@@ -76,6 +76,7 @@ export default function Dashboard() {
   const openNewExpModal = useNavigationStore((s) => s.openNewExpModal);
 
   const ohmsLaw = getExperiment("ohms-law");
+  const seriesParallel = getExperiment("series-parallel");
   const oxalicAcid = getExperiment("oxalic-acid-titration");
   const mohrsSalt = getExperiment("mohrs-salt-titration");
 
@@ -221,7 +222,7 @@ export default function Dashboard() {
             </div>
           </header>
 
-          {/* Physics Group (Only Ohm's Law) */}
+          {/* Physics Group */}
           <section className="mb-12">
             <div className="flex items-center gap-4 mb-6">
               <h3 className="font-headline-md text-xl text-[#e5e2e1] font-semibold">
@@ -229,7 +230,7 @@ export default function Dashboard() {
               </h3>
               <div className="flex-1 h-px bg-[#424845]/50" />
               <span className="font-data-mono text-xs text-[#c2c8c4] bg-[#20201f] px-2.5 py-1 rounded border border-[#424845]/40">
-                01 MODULE
+                02 MODULES
               </span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -244,6 +245,18 @@ export default function Dashboard() {
                   "Verify the linear relationship between voltage and current across a resistor at constant resistance."
                 }
                 onStart={() => handleStart("ohms-law")}
+              />
+              <ExperimentCard
+                id="series-parallel"
+                title={seriesParallel?.config.title || "Series and Parallel Circuits"}
+                subject="physics"
+                category="ELECTROMAGNETISM"
+                icon="account_tree"
+                description={
+                  seriesParallel?.config.description ||
+                  "Investigate equivalent resistance in series and parallel resistor networks."
+                }
+                onStart={() => handleStart("series-parallel")}
               />
             </div>
           </section>

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { 
   ReactFlow, 
   Background, 
@@ -7,7 +7,8 @@ import {
   applyEdgeChanges,
   addEdge,
   ReactFlowProvider,
-  ConnectionMode
+  ConnectionMode,
+  useReactFlow,
 } from '@xyflow/react';
 import type { Node, Edge, NodeChange, EdgeChange, Connection } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -16,7 +17,10 @@ import { BatteryNode } from './nodes/BatteryNode';
 import { ResistorNode } from './nodes/ResistorNode';
 import { AmmeterNode } from './nodes/AmmeterNode';
 import { VoltmeterNode } from './nodes/VoltmeterNode';
+import { VariableResistorNode } from './nodes/VariableResistorNode';
+import { SwitchNode } from './nodes/SwitchNode';
 import { Palette } from './Palette';
+import type { PaletteComponentType } from './Palette';
 import { buildCircuitState } from '../circuitAdapter';
 import { 
   solveCircuit, 
@@ -26,13 +30,17 @@ import {
 import type { ComponentReading, SimulationResult } from '../../../engines/physics/circuits/types';
 import type { 
   OhmsLawIssueCode, 
+  OhmsLawResult,
   SeriesParallelIssueCode, 
+  SeriesParallelResult,
   ExperimentUsability 
 } from '../../../engines/physics/experiments/types';
 
 const nodeTypes = {
   battery: BatteryNode,
   resistor: ResistorNode,
+  variable_resistor: VariableResistorNode,
+  switch: SwitchNode,
   ammeter: AmmeterNode,
   voltmeter: VoltmeterNode,
 };
@@ -43,15 +51,20 @@ export interface CircuitSandboxProps {
     nodes: Node[],
     simResult: SimulationResult,
     issues: (OhmsLawIssueCode | SeriesParallelIssueCode)[],
-    usability: ExperimentUsability
+    usability: ExperimentUsability,
+    experimentResult: OhmsLawResult | SeriesParallelResult,
   ) => void;
 }
 
 function CircuitSandboxContent({ experimentType, onSimulationUpdate }: CircuitSandboxProps) {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
+  const nodesRef = useRef<Node[]>([]);
+  const edgesRef = useRef<Edge[]>([]);
+  const simulationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const { screenToFlowPosition } = useReactFlow();
 
   // Re-run simulation when nodes/edges change
   const runSimulation = useCallback((currentNodes: Node[], currentEdges: Edge[]) => {
@@ -64,13 +77,16 @@ function CircuitSandboxContent({ experimentType, onSimulationUpdate }: CircuitSa
     // 3. Verify experiment
     let expIssues: (OhmsLawIssueCode | SeriesParallelIssueCode)[] = [];
     let expUsability: ExperimentUsability = 'usable';
+    let experimentResult: OhmsLawResult | SeriesParallelResult;
 
     if (experimentType === 'ohms-law') {
       const res = verifyOhmsLawExperiment(circuitState);
+      experimentResult = res;
       expIssues = res.issues;
       expUsability = res.usability;
     } else {
       const res = verifySeriesParallelExperiment(circuitState);
+      experimentResult = res;
       expIssues = res.issues;
       expUsability = res.usability;
     }
@@ -111,51 +127,77 @@ function CircuitSandboxContent({ experimentType, onSimulationUpdate }: CircuitSa
       };
     });
 
+    nodesRef.current = updatedNodes;
     setNodes(updatedNodes);
 
     if (onSimulationUpdate) {
-      onSimulationUpdate(updatedNodes, simResult, expIssues, expUsability);
+      onSimulationUpdate(updatedNodes, simResult, expIssues, expUsability, experimentResult);
     }
 
   }, [experimentType, onSimulationUpdate]);
 
+  const scheduleSimulation = useCallback((nextNodes: Node[], nextEdges: Edge[]) => {
+    nodesRef.current = nextNodes;
+    edgesRef.current = nextEdges;
+    if (simulationTimerRef.current) clearTimeout(simulationTimerRef.current);
+    simulationTimerRef.current = setTimeout(() => {
+      runSimulation(nodesRef.current, edgesRef.current);
+      simulationTimerRef.current = null;
+    }, 50);
+  }, [runSimulation]);
+
+  useEffect(() => () => {
+    if (simulationTimerRef.current) clearTimeout(simulationTimerRef.current);
+  }, []);
+
   const onNodesChange = useCallback((changes: NodeChange<Node>[]) => {
     setNodes((nds) => {
       const nextNodes = applyNodeChanges(changes, nds);
+      nodesRef.current = nextNodes;
       
       // Look for deleted nodes to clean up edges
       const deletedIds = new Set(changes.filter(c => c.type === 'remove').map(c => c.id));
       if (deletedIds.size > 0) {
         setEdges(eds => {
           const nextEdges = eds.filter(e => !deletedIds.has(e.source) && !deletedIds.has(e.target));
-          setTimeout(() => runSimulation(nextNodes, nextEdges), 50);
+          edgesRef.current = nextEdges;
+          scheduleSimulation(nextNodes, nextEdges);
           return nextEdges;
         });
       } else {
-        setTimeout(() => runSimulation(nextNodes, edges), 50);
+        scheduleSimulation(nextNodes, edgesRef.current);
       }
       
       return nextNodes;
     });
-  }, [edges, runSimulation]);
+  }, [scheduleSimulation]);
 
   const onEdgesChange = useCallback((changes: EdgeChange<Edge>[]) => {
     setEdges((eds) => {
       const nextEdges = applyEdgeChanges(changes, eds);
-      setTimeout(() => runSimulation(nodes, nextEdges), 50);
+      edgesRef.current = nextEdges;
+      scheduleSimulation(nodesRef.current, nextEdges);
       return nextEdges;
     });
-  }, [nodes, runSimulation]);
+  }, [scheduleSimulation]);
 
   const onConnect = useCallback((connection: Connection) => {
     setEdges((eds) => {
+      if (!connection.sourceHandle || !connection.targetHandle) return eds;
+      if (connection.source === connection.target) return eds;
+      const duplicate = eds.some((edge) => (
+        (edge.sourceHandle === connection.sourceHandle && edge.targetHandle === connection.targetHandle)
+        || (edge.sourceHandle === connection.targetHandle && edge.targetHandle === connection.sourceHandle)
+      ));
+      if (duplicate) return eds;
       const nextEdges = addEdge({ ...connection, type: 'step' }, eds);
-      setTimeout(() => runSimulation(nodes, nextEdges), 50);
+      edgesRef.current = nextEdges;
+      scheduleSimulation(nodesRef.current, nextEdges);
       return nextEdges;
     });
-  }, [nodes, runSimulation]);
+  }, [scheduleSimulation]);
 
-  const onNodeDataChange = useCallback((nodeId: string, key: string, value: any) => {
+  const onNodeDataChange = useCallback((nodeId: string, key: string, value: unknown) => {
     setNodes((nds) => {
       const nextNodes = nds.map(node => {
         if (node.id === nodeId) {
@@ -163,33 +205,20 @@ function CircuitSandboxContent({ experimentType, onSimulationUpdate }: CircuitSa
         }
         return node;
       });
-      setTimeout(() => runSimulation(nextNodes, edges), 50);
+      nodesRef.current = nextNodes;
+      scheduleSimulation(nextNodes, edgesRef.current);
       return nextNodes;
     });
-  }, [edges, runSimulation]);
+  }, [scheduleSimulation]);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
-  const onDrop = useCallback((event: React.DragEvent) => {
-    event.preventDefault();
-
-    const type = event.dataTransfer.getData('application/reactflow');
-    if (!type) return;
-
-    const bounds = reactFlowWrapper.current?.getBoundingClientRect();
-    if (!bounds) return;
-
-    // A simple position estimate since we aren't using useReactFlow().screenToFlowPosition
-    const position = {
-      x: event.clientX - bounds.left,
-      y: event.clientY - bounds.top,
-    };
-
+  const addComponent = useCallback((type: PaletteComponentType, position: { x: number; y: number }) => {
     const newNode: Node = {
-      id: `${type}_${Date.now()}`,
+      id: `${type}_${crypto.randomUUID()}`,
       type,
       position,
       data: { onChange: onNodeDataChange },
@@ -197,21 +226,50 @@ function CircuitSandboxContent({ experimentType, onSimulationUpdate }: CircuitSa
 
     if (type === 'battery') newNode.data.voltage = 5;
     if (type === 'resistor') newNode.data.resistance = 100;
+    if (type === 'variable_resistor') {
+      newNode.data.minResistance = 1;
+      newNode.data.maxResistance = 1000;
+      newNode.data.resistance = 100;
+    }
+    if (type === 'switch') newNode.data.closed = false;
 
     setNodes((nds) => {
       const count = nds.filter(n => n.type === type).length + 1;
-      const typeName = type.charAt(0).toUpperCase() + type.slice(1);
+      const typeName = type.replace('_', ' ').replace(/^./, character => character.toUpperCase());
       newNode.data.label = `${typeName} ${count}`;
 
       const nextNodes = nds.concat(newNode);
-      setTimeout(() => runSimulation(nextNodes, edges), 50);
+      nodesRef.current = nextNodes;
+      scheduleSimulation(nextNodes, edgesRef.current);
       return nextNodes;
     });
-  }, [onNodeDataChange, edges, runSimulation]);
+  }, [onNodeDataChange, scheduleSimulation]);
+
+  const addComponentFromPalette = useCallback((type: PaletteComponentType) => {
+    const bounds = reactFlowWrapper.current?.getBoundingClientRect();
+    if (!bounds) return;
+    const column = nodes.length % 2;
+    const row = Math.floor(nodes.length / 2);
+    addComponent(type, screenToFlowPosition({
+      x: column === 0 ? bounds.left + 24 : bounds.right - 184,
+      y: bounds.top + 36 + row * 150,
+    }));
+  }, [addComponent, nodes.length, screenToFlowPosition]);
+
+  const onDrop = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+
+    const type = event.dataTransfer.getData('application/reactflow');
+    if (!Object.hasOwn(nodeTypes, type)) return;
+
+    const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+
+    addComponent(type as PaletteComponentType, position);
+  }, [addComponent, screenToFlowPosition]);
 
   return (
     <div className="w-full h-full flex bg-slate-950 font-sans" ref={containerRef}>
-      <Palette />
+      <Palette onAddComponent={addComponentFromPalette} />
       
       <div className="flex-1 relative" ref={reactFlowWrapper}>
         <ReactFlow
@@ -226,7 +284,6 @@ function CircuitSandboxContent({ experimentType, onSimulationUpdate }: CircuitSa
           defaultEdgeOptions={{ type: 'step' }}
           connectionMode={ConnectionMode.Loose}
           connectionRadius={40}
-          fitView
           className="bg-slate-900"
         >
           <Background color="#334155" gap={24} />

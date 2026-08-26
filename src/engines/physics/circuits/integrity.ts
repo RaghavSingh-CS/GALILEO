@@ -140,6 +140,15 @@ function checkComponentShape(comp: unknown, index: number): ValidationMessage | 
     }
   }
 
+  if (c['type'] === 'switch' && typeof c['closed'] !== 'boolean') {
+    return {
+      ruleId: 'MALFORMED_INPUT',
+      severity: 'error',
+      message: `Switch '${c['id']}' must have a boolean 'closed' value.`,
+      componentIds: [c['id'] as string],
+    };
+  }
+
   return null;
 }
 

@@ -35,7 +35,7 @@ export function NewExperimentModal({ isOpen, onClose }: ModalProps) {
 
   const handleTemplateChange = (newTemplate: string) => {
     setTemplate(newTemplate);
-    if (newTemplate === "ohms-law") {
+    if (newTemplate === "ohms-law" || newTemplate === "series-parallel") {
       setSubject("physics");
     } else if (newTemplate === "oxalic-acid-titration" || newTemplate === "mohrs-salt-titration") {
       setSubject("chemistry");
@@ -125,7 +125,10 @@ export function NewExperimentModal({ isOpen, onClose }: ModalProps) {
                 className="w-full bg-[#131313] border border-[#333333] rounded px-3 py-2 text-[#e5e2e1] focus:border-[#8da399] outline-none font-data-mono text-xs cursor-pointer"
               >
                 {subject === "physics" ? (
-                  <option value="ohms-law">Circuit Fundamentals (Ohm's Law)</option>
+                  <>
+                    <option value="ohms-law">Circuit Fundamentals (Ohm's Law)</option>
+                    <option value="series-parallel">Series &amp; Parallel Resistance</option>
+                  </>
                 ) : (
                   <>
                     <option value="oxalic-acid-titration">Oxalic Acid KMnO4 Standardization (Self-indicating)</option>

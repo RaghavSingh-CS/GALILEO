@@ -4,9 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"vite\" \"tsx server/proxy.ts\"",
+    "dev": "concurrently \"vite\" \"node --experimental-strip-types server/proxy.ts\"",
     "dev:client": "vite",
-    "dev:server": "tsx server/proxy.ts",
+    "dev:server": "node --experimental-strip-types server/proxy.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -b --pretty false",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"

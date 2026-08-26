@@ -1,7 +1,8 @@
 import type { Edge, Node } from "@xyflow/react";
-import type { 
+import type {
   CircuitState, 
   Component, 
+  Terminal,
   Wire,
   ValidationMessage 
 } from "@/engines/physics/circuits/types";
@@ -13,7 +14,7 @@ function mapNodeToComponent(node: Node): Component | null {
   const t = node.type;
   if (!t) return null;
 
-  const terminals: [any, any] = [
+  const terminals: [Terminal, Terminal] = [
     { id: `${node.id}:a`, componentId: node.id, role: 'a' },
     { id: `${node.id}:b`, componentId: node.id, role: 'b' }
   ];
@@ -96,11 +97,16 @@ export function buildCircuitState(nodes: Node[], edges: Edge[]): CircuitState {
     if (comp) components.push(comp);
   }
 
-  // Ensure handles are defined, map directly from edge handles since they match Terminal.id format
+  const terminalId = (nodeId: string, handleId: string) => (
+    handleId.includes(':') ? handleId : `${nodeId}:${handleId}`
+  );
+
+  // Custom sandbox nodes use fully qualified handles. The normalizer also
+  // accepts React Flow's conventional short handle IDs for saved/legacy state.
   const wires: Wire[] = edges.filter(e => e.sourceHandle && e.targetHandle).map(e => ({
     id: e.id,
-    sourceTerminalId: e.sourceHandle!,
-    targetTerminalId: e.targetHandle!
+    sourceTerminalId: terminalId(e.source, e.sourceHandle!),
+    targetTerminalId: terminalId(e.target, e.targetHandle!)
   }));
 
   return { components, wires };

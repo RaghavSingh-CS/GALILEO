@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { OhmsLawIssueCode, SeriesParallelIssueCode, ExperimentUsability } from '../../../engines/physics/experiments/types';
 
 interface ValidationPanelProps {
@@ -10,25 +10,8 @@ function getIssueKey(issue: string) {
   return `issue:${issue}`;
 }
 
-export function ValidationPanel({ issues, usability }: ValidationPanelProps) {
+function ValidationPanelContent({ issues, usability }: ValidationPanelProps) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-
-  // Cleanup dismissed keys if they no longer exist
-  useEffect(() => {
-    const currentKeys = new Set(issues.map(getIssueKey));
-    
-    setDismissed(prev => {
-      const next = new Set(prev);
-      let changed = false;
-      for (const key of prev) {
-        if (!currentKeys.has(key)) {
-          next.delete(key);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [issues]);
 
   const activeIssues = issues.filter(i => !dismissed.has(getIssueKey(i)));
 
@@ -80,4 +63,8 @@ export function ValidationPanel({ issues, usability }: ValidationPanelProps) {
       )}
     </div>
   );
+}
+
+export function ValidationPanel(props: ValidationPanelProps) {
+  return <ValidationPanelContent key={props.issues.join('|')} {...props} />;
 }

@@ -52,9 +52,10 @@ describe('Circuit Adapter', () => {
     const state = translateToCircuitState(remainingNodes, cleanedEdges);
     const result = solveCircuit(state);
     
-    // Will be success=true but open circuit (current=0)
-    expect(result.success).toBe(true);
-    expect(result.branchData.find(b => b.componentId === 'bat1')?.current).toBe(0);
+    // A battery left by itself is a safely contained, blocking open circuit.
+    expect(result.success).toBe(false);
+    expect(result.branchData).toEqual([]);
+    expect(result.validation.some(message => message.ruleId === 'OPEN_CIRCUIT')).toBe(true);
   });
 
   it('malformed/stale edge is rejected with a message rather than reaching the solver', () => {

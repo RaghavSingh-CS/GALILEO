@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useNavigationStore } from "@/stores/navigation";
 import { useExperimentStore } from "@/stores/experiment";
 import { useSettingsStore } from "@/stores/settings";
@@ -8,7 +8,7 @@ import { CircuitSandbox } from '@/experiments/physics/components/CircuitSandbox'
 import { ValidationPanel } from '@/experiments/physics/components/ValidationPanel';
 import type { Node } from '@xyflow/react';
 import type { SimulationResult } from '@/engines/physics/circuits/types';
-import type { OhmsLawIssueCode, SeriesParallelIssueCode, ExperimentUsability } from '@/engines/physics/experiments/types';
+import type { OhmsLawIssueCode, OhmsLawResult, SeriesParallelIssueCode, SeriesParallelResult, ExperimentUsability } from '@/engines/physics/experiments/types';
 import GalileoChat from "@/panels/GalileoChat";
 import { SaveExperimentModal } from "@/panels/Modals";
 import {
@@ -25,6 +25,7 @@ type DragType = "apparatus" | "observations" | "chat" | "tableHeight" | null;
 
 export default function Workspace() {
   const experimentId = useNavigationStore((s) => s.activeExperimentId);
+  const activeExpId = experimentId || "ohms-law";
   const goToDashboard = useNavigationStore((s) => s.goToDashboard);
   const goToSettings = useNavigationStore((s) => s.goToSettings);
   const galileoPanelOpen = useNavigationStore((s) => s.galileoPanelOpen);
@@ -39,7 +40,6 @@ export default function Workspace() {
 
   const graphLineType = useSettingsStore((s) => s.graphLineType);
   const getSweepIntervalMs = useSettingsStore((s) => s.getSweepIntervalMs);
-  const liveCircuitCurrent = useExperimentStore((s) => s.liveCircuitCurrent);
   const sessionStatus = useExperimentStore((s) => s.sessionStatus);
   const setSessionStatus = useExperimentStore((s) => s.setSessionStatus);
   const chatContextKey = useExperimentStore((s) => s.chatContextKey);
@@ -57,33 +57,24 @@ export default function Workspace() {
   // Sandbox state synced from CircuitSandbox
   const [sandboxNodes, setSandboxNodes] = useState<Node[]>([]);
   const [sandboxSimResult, setSandboxSimResult] = useState<SimulationResult | null>(null);
-  const [sandboxIssues, setSandboxIssues] = useState<(OhmsLawIssueCode | SeriesParallelIssueCode)[]>([]);
-  const [sandboxUsability, setSandboxUsability] = useState<ExperimentUsability>('usable');
+  const [sandboxIssues, setSandboxIssues] = useState<(OhmsLawIssueCode | SeriesParallelIssueCode)[]>(
+    activeExpId === 'series-parallel'
+      ? ['MISSING_BATTERY', 'MISSING_RESISTORS', 'MISSING_AMMETER', 'MISSING_VOLTMETER', 'EXTRANEOUS_COMPONENTS', 'INVALID_CIRCUIT']
+      : ['MISSING_BATTERY', 'MISSING_RESISTOR', 'MISSING_AMMETER', 'MISSING_VOLTMETER', 'EXTRANEOUS_COMPONENTS', 'INVALID_CIRCUIT'],
+  );
+  const [sandboxUsability, setSandboxUsability] = useState<ExperimentUsability>('unusable');
+  const [sandboxExperimentResult, setSandboxExperimentResult] = useState<OhmsLawResult | SeriesParallelResult | null>(null);
 
   const [selectedAmmeterId, setSelectedAmmeterId] = useState<string | null>(null);
   const [selectedVoltmeterId, setSelectedVoltmeterId] = useState<string | null>(null);
-
-  // Auto-assign meters
-  useEffect(() => {
-    const ammeters = sandboxNodes.filter(n => n.type === 'ammeter');
-    const voltmeters = sandboxNodes.filter(n => n.type === 'voltmeter');
-
-    // If selected meter deleted, clear it
-    if (selectedAmmeterId && !ammeters.some(a => a.id === selectedAmmeterId)) {
-      setSelectedAmmeterId(null);
-    }
-    if (selectedVoltmeterId && !voltmeters.some(v => v.id === selectedVoltmeterId)) {
-      setSelectedVoltmeterId(null);
-    }
-
-    // If exactly one exists and none selected, auto-select
-    if (ammeters.length === 1 && !selectedAmmeterId) {
-      setSelectedAmmeterId(ammeters[0].id);
-    }
-    if (voltmeters.length === 1 && !selectedVoltmeterId) {
-      setSelectedVoltmeterId(voltmeters[0].id);
-    }
-  }, [sandboxNodes, selectedAmmeterId, selectedVoltmeterId]);
+  const sandboxAmmeters = sandboxNodes.filter(node => node.type === 'ammeter');
+  const sandboxVoltmeters = sandboxNodes.filter(node => node.type === 'voltmeter');
+  const effectiveAmmeterId = selectedAmmeterId && sandboxAmmeters.some(node => node.id === selectedAmmeterId)
+    ? selectedAmmeterId
+    : sandboxAmmeters.length === 1 ? sandboxAmmeters[0].id : null;
+  const effectiveVoltmeterId = selectedVoltmeterId && sandboxVoltmeters.some(node => node.id === selectedVoltmeterId)
+    ? selectedVoltmeterId
+    : sandboxVoltmeters.length === 1 ? sandboxVoltmeters[0].id : null;
 
   const [chatWidth, setChatWidth] = useState(320);
   const [obsTableHeight, setObsTableHeight] = useState(190);
@@ -108,7 +99,6 @@ export default function Workspace() {
   const rafId = useRef<number | null>(null);
 
   const allExperiments = getAllExperiments();
-  const activeExpId = experimentId || "ohms-law";
   const entry = getExperiment(activeExpId) || allExperiments[0];
   const config = entry.config;
 
@@ -152,7 +142,7 @@ export default function Workspace() {
   // Compute live engine outputs (memoized so reading matches display)
   const noiseFraction = useSettingsStore((s) => s.getNoiseFraction());
   const liveResult = useMemo(() => {
-    return entry && Object.keys(apparatusValues).length > 0
+    return entry?.config.subject === 'chemistry' && Object.keys(apparatusValues).length > 0
       ? entry.engine.compute(apparatusValues, { noiseFraction })
       : null;
   }, [entry, apparatusValues, noiseFraction]);
@@ -163,11 +153,28 @@ export default function Workspace() {
     if (!entry) return;
 
     if (isCircuit) {
-      if (!selectedAmmeterId || !selectedVoltmeterId || !sandboxSimResult) return;
-      const vReading = sandboxSimResult.readings.find(r => r.componentId === selectedVoltmeterId)?.value ?? 0;
-      const iReading = sandboxSimResult.readings.find(r => r.componentId === selectedAmmeterId)?.value ?? 0;
-      // Record specifically for V-I graph
-      addObservation({ voltage: vReading, resistance: 0 }, { current: iReading });
+      if (!effectiveAmmeterId || !effectiveVoltmeterId || !sandboxSimResult || sandboxUsability !== 'usable') return;
+      const voltageV = Math.abs(sandboxSimResult.readings.find(r => r.componentId === effectiveVoltmeterId)?.value ?? NaN);
+      const currentA = Math.abs(sandboxSimResult.readings.find(r => r.componentId === effectiveAmmeterId)?.value ?? NaN);
+      if (!Number.isFinite(voltageV) || !Number.isFinite(currentA) || currentA <= 0) return;
+
+      if (activeExpId === 'series-parallel' && sandboxExperimentResult && 'configuration' in sandboxExperimentResult) {
+        addObservation(
+          { voltage: voltageV },
+          {
+            configuration: sandboxExperimentResult.configuration === 'series' ? 1 : 2,
+            voltage: sandboxExperimentResult.totalVoltageV ?? voltageV,
+            current: (sandboxExperimentResult.totalCurrentA ?? currentA) * 1000,
+            resistance: sandboxExperimentResult.equivalentResistanceOhms ?? voltageV / currentA,
+          },
+        );
+      } else {
+        const resistanceOhms = voltageV / currentA;
+        addObservation(
+          { voltage: voltageV, resistance: resistanceOhms },
+          { current: currentA * 1000, power: voltageV * currentA * 1000 },
+        );
+      }
     } else {
       if (!liveResult) return;
       addObservation(apparatusValues, liveResult);
@@ -176,7 +183,12 @@ export default function Workspace() {
 
   // Determine if capture is allowed
   const canCapture = isCircuit 
-    ? (selectedAmmeterId !== null && selectedVoltmeterId !== null)
+    ? (
+        effectiveAmmeterId !== null
+        && effectiveVoltmeterId !== null
+        && sandboxSimResult?.success === true
+        && sandboxUsability === 'usable'
+      )
     : (sessionStatus !== "invalid");
 
   const handleReset = () => {
@@ -185,6 +197,17 @@ export default function Workspace() {
     for (const param of entry.config.apparatus) {
       defaults[param.id] = param.default;
     }
+    setSandboxNodes([]);
+    setSandboxSimResult(null);
+    setSandboxExperimentResult(null);
+    setSandboxUsability('unusable');
+    setSandboxIssues(
+      activeExpId === 'series-parallel'
+        ? ['MISSING_BATTERY', 'MISSING_RESISTORS', 'MISSING_AMMETER', 'MISSING_VOLTMETER', 'EXTRANEOUS_COMPONENTS', 'INVALID_CIRCUIT']
+        : ['MISSING_BATTERY', 'MISSING_RESISTOR', 'MISSING_AMMETER', 'MISSING_VOLTMETER', 'EXTRANEOUS_COMPONENTS', 'INVALID_CIRCUIT'],
+    );
+    setSelectedAmmeterId(null);
+    setSelectedVoltmeterId(null);
     startSession(activeExpId, defaults);
   };
 
@@ -218,7 +241,14 @@ export default function Workspace() {
   const chartData = useMemo(() => {
     const isCircuit = entry?.config.subject === "physics";
     let data;
-    if (isCircuit) {
+    if (activeExpId === 'series-parallel') {
+      data = observations.map((obs, i) => ({
+        index: i + 1,
+        x: i + 1,
+        y: obs.outputs.resistance ?? 0,
+        configuration: obs.outputs.configuration ?? 0,
+      }));
+    } else if (isCircuit) {
       data = observations.map((obs, i) => ({
         index: i + 1,
         x: obs.inputs.voltage ?? 0,
@@ -233,15 +263,25 @@ export default function Workspace() {
       }));
     }
     return data.sort((a, b) => a.x - b.x);
-  }, [observations, entry?.config.subject]);
+  }, [observations, entry?.config.subject, activeExpId]);
 
   // Computed statistical results
   const computedStats = useMemo(() => {
-    if (observations.length < 2) return null;
-
     if (activeExpId === "ohms-law") {
-      return analyzeOhmsLaw(observations, apparatusValues.resistance ?? 100);
+      if (observations.length < 2) return null;
+      return analyzeOhmsLaw(observations, observations[0]?.inputs.resistance ?? 100);
+    } else if (activeExpId === 'series-parallel') {
+      if (observations.length < 1) return null;
+      const latest = observations[observations.length - 1];
+      return {
+        label1: 'Equivalent Resistance',
+        val1: `${(latest.outputs.resistance ?? 0).toFixed(2)} Ω`,
+        label2: 'Configuration',
+        val2: latest.outputs.configuration === 1 ? 'Series' : 'Parallel',
+        summary: `Measured ${(latest.outputs.resistance ?? 0).toFixed(2)} Ω in ${latest.outputs.configuration === 1 ? 'series' : 'parallel'} configuration.`,
+      };
     } else {
+      if (observations.length < 1) return null;
       const vAnalyte = apparatusValues.aliquotVolume ?? 10;
       const calculatedMURL = 0.02; // Roughly simulated KMnO4 molarity
       return {
@@ -257,12 +297,17 @@ export default function Workspace() {
   const exportCSV = () => {
     if (observations.length === 0) return;
     const isCircuit = entry.config.subject === "physics";
-    const headers = isCircuit
+    const headers = activeExpId === 'series-parallel'
+      ? "ID,Configuration,TotalVoltage(V),TotalCurrent(mA),EquivalentResistance(Ohms)\n"
+      : isCircuit
       ? "ID,Voltage(V),Resistance(Ohms),Current(mA),Power(mW)\n"
       : "ID,Titrant(mL),ColorIntensity,TotalVol(mL)\n";
 
     const rows = observations
       .map((obs) => {
+        if (activeExpId === 'series-parallel') {
+          return `${obs.id},${obs.outputs.configuration === 1 ? 'Series' : 'Parallel'},${obs.outputs.voltage ?? 0},${obs.outputs.current ?? 0},${obs.outputs.resistance ?? 0}`;
+        }
         if (isCircuit) {
           return `${obs.id},${obs.inputs.voltage ?? 0},${
             obs.inputs.resistance ?? 100
@@ -358,8 +403,24 @@ export default function Workspace() {
     };
   }, [activeDrag, apparatusWidth, obsWidth, chatWidth, galileoPanelOpen]);
 
-  const currentVoltage = apparatusValues.voltage ?? 5;
-  const liveCurrent = isCircuit ? liveCircuitCurrent : (liveResult?.current ?? 0);
+  const currentVoltage = Math.abs(sandboxSimResult?.branchData.find(branch => branch.type === 'battery')?.voltage ?? 0);
+  const liveCurrent = isCircuit
+    ? Math.abs(sandboxSimResult?.readings.find(reading => reading.componentId === effectiveAmmeterId)?.value ?? 0) * 1000
+    : (liveResult?.current ?? 0);
+
+  const handleSandboxUpdate = useCallback((
+    nodes: Node[],
+    simResult: SimulationResult,
+    issues: (OhmsLawIssueCode | SeriesParallelIssueCode)[],
+    usability: ExperimentUsability,
+    experimentResult: OhmsLawResult | SeriesParallelResult,
+  ) => {
+    setSandboxNodes(nodes);
+    setSandboxSimResult(simResult);
+    setSandboxIssues(issues);
+    setSandboxUsability(usability);
+    setSandboxExperimentResult(experimentResult);
+  }, []);
 
   const titrantVol = apparatusValues.volumeAdded ?? 0;
   const stirrerRPM = apparatusValues.stirrerSpeed ?? 300;
@@ -608,7 +669,7 @@ export default function Workspace() {
                     </div>
                     <div className="font-data-mono text-base text-[#b5ccc1] font-semibold">
                       {(() => {
-                        const r = selectedVoltmeterId ? sandboxNodes.find(n => n.id === selectedVoltmeterId)?.data?.reading : undefined;
+                        const r = effectiveVoltmeterId ? sandboxNodes.find(n => n.id === effectiveVoltmeterId)?.data?.reading : undefined;
                         return typeof r === 'number' ? (
                           <>
                             {r.toFixed(2)}
@@ -624,7 +685,7 @@ export default function Workspace() {
                     </div>
                     <div className="font-data-mono text-base text-[#b5ccc1] font-semibold">
                       {(() => {
-                        const r = selectedAmmeterId ? sandboxNodes.find(n => n.id === selectedAmmeterId)?.data?.reading : undefined;
+                        const r = effectiveAmmeterId ? sandboxNodes.find(n => n.id === effectiveAmmeterId)?.data?.reading : undefined;
                         return typeof r === 'number' ? (
                           <>
                             {r.toFixed(3)}
@@ -683,7 +744,7 @@ export default function Workspace() {
                     <span className="text-[#8da399]">Voltage Source</span>
                     <select 
                       className="bg-[#131313] border border-[#333333] text-[#e5e2e1] p-1 rounded font-data-mono text-[11px] w-44"
-                      value={selectedVoltmeterId ?? ""}
+                      value={effectiveVoltmeterId ?? ""}
                       onChange={e => setSelectedVoltmeterId(e.target.value)}
                     >
                       <option value="" disabled>Select Voltmeter...</option>
@@ -698,7 +759,7 @@ export default function Workspace() {
                     <span className="text-[#8da399]">Current Source</span>
                     <select 
                       className="bg-[#131313] border border-[#333333] text-[#e5e2e1] p-1 rounded font-data-mono text-[11px] w-44"
-                      value={selectedAmmeterId ?? ""}
+                      value={effectiveAmmeterId ?? ""}
                       onChange={e => setSelectedAmmeterId(e.target.value)}
                     >
                       <option value="" disabled>Select Ammeter...</option>
@@ -833,12 +894,7 @@ export default function Workspace() {
                     <CircuitSandbox 
                       key={chatContextKey}
                       experimentType={activeExpId as 'ohms-law' | 'series-parallel'} 
-                      onSimulationUpdate={(nodes, simResult, issues, usability) => {
-                        setSandboxNodes(nodes);
-                        setSandboxSimResult(simResult);
-                        setSandboxIssues(issues);
-                        setSandboxUsability(usability);
-                      }}
+                      onSimulationUpdate={handleSandboxUpdate}
                     />
                   </div>
 
@@ -934,6 +990,7 @@ export default function Workspace() {
                 <button
                   type="button"
                   onClick={handleTakeReading}
+                  disabled={!canCapture}
                   className="text-[#e5e2e1] hover:text-[#8da399] transition-colors flex items-center gap-1.5 font-label-caps text-[11px] cursor-pointer"
                   title="Take observation point"
                 >
@@ -1067,7 +1124,9 @@ export default function Workspace() {
                 <thead className="bg-[#20201f] sticky top-0 border-b border-[#424845] text-[#c2c8c4] font-label-caps text-[10px]">
                   <tr>
                     <th className="p-2 text-center w-8">#</th>
-                    {config.apparatus.map((app) => (
+                    {isCircuit && <th className="p-2 text-right">Voltage (V)</th>}
+                    {activeExpId === 'ohms-law' && <th className="p-2 text-right">Resistance (Ω)</th>}
+                    {!isCircuit && config.apparatus.map((app) => (
                       <th key={`input-${app.id}`} className="p-2 text-right">
                         {app.label} ({app.unit})
                       </th>
@@ -1086,14 +1145,26 @@ export default function Workspace() {
                       className="hover:bg-[#8da399]/5 transition-colors"
                     >
                       <td className="p-2 text-center text-[#c2c8c4]">{obs.id}</td>
-                      {config.apparatus.map((app) => (
+                      {isCircuit && (
+                        <td className="p-2 text-right text-[#b5ccc1]">
+                          {(obs.inputs.voltage ?? 0).toFixed(2)}
+                        </td>
+                      )}
+                      {activeExpId === 'ohms-law' && (
+                        <td className="p-2 text-right text-[#b5ccc1]">
+                          {(obs.inputs.resistance ?? 0).toFixed(2)}
+                        </td>
+                      )}
+                      {!isCircuit && config.apparatus.map((app) => (
                         <td key={`input-${obs.id}-${app.id}`} className="p-2 text-right text-[#b5ccc1]">
                           {(obs.inputs[app.id] ?? 0).toFixed(1)}
                         </td>
                       ))}
                       {entry.engine.outputColumns.map((col) => (
                         <td key={`output-${obs.id}-${col.key}`} className="p-2 text-right text-[#8da399]">
-                          {(obs.outputs[col.key] ?? 0).toFixed(2)}
+                          {col.key === 'configuration'
+                            ? (obs.outputs[col.key] === 1 ? 'Series' : 'Parallel')
+                            : (obs.outputs[col.key] ?? 0).toFixed(2)}
                         </td>
                       ))}
                     </tr>
@@ -1128,12 +1199,16 @@ export default function Workspace() {
           {/* Computed Results Card */}
           <div className="p-3 border-b border-[#424845] bg-[#20201f] shrink-0">
             <div className="font-label-caps text-[10px] text-[#8da399] mb-1.5 font-semibold uppercase">
-              {isCircuit ? "COMPUTED OHMIC FIT" : "TITRATION ANALYSIS RESULTS"}
+              {activeExpId === 'series-parallel'
+                ? "NETWORK ANALYSIS"
+                : isCircuit ? "COMPUTED OHMIC FIT" : "TITRATION ANALYSIS RESULTS"}
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs font-data-mono">
               <div className="bg-[#131313] p-1.5 rounded border border-[#333333]">
                 <div className="text-[9px] text-[#c2c8c4] uppercase">
-                  {computedStats?.label1 || (isCircuit ? "Calculated Slope R" : "Analyte Molarity")}
+                  {computedStats?.label1 || (activeExpId === 'series-parallel'
+                    ? "Equivalent Resistance"
+                    : isCircuit ? "Calculated Slope R" : "Analyte Molarity")}
                 </div>
                 <div className="text-sm text-[#e5e2e1] font-semibold mt-0.5">
                   {computedStats?.val1 || "--"}
@@ -1141,7 +1216,9 @@ export default function Workspace() {
               </div>
               <div className="bg-[#131313] p-1.5 rounded border border-[#333333]">
                 <div className="text-[9px] text-[#c2c8c4] uppercase">
-                  {computedStats?.label2 || (isCircuit ? "Experimental Error" : "Equivalence Vol")}
+                  {computedStats?.label2 || (activeExpId === 'series-parallel'
+                    ? "Configuration"
+                    : isCircuit ? "Experimental Error" : "Equivalence Vol")}
                 </div>
                 <div className="text-sm text-[#b5ccc1] font-semibold mt-0.5">
                   {computedStats?.val2 || "--"}
@@ -1154,7 +1231,9 @@ export default function Workspace() {
           <div className="flex-1 p-3 flex flex-col bg-[#131313] min-h-[140px] overflow-hidden">
             <div className="flex justify-between items-center mb-1 shrink-0">
               <span className="font-label-caps text-[10px] text-[#c2c8c4]">
-                {isCircuit ? "V-I CHARACTERISTIC PLOT" : "COLOR INTENSITY CURVE"}
+                {activeExpId === 'series-parallel'
+                  ? "EQUIVALENT RESISTANCE COMPARISON"
+                  : isCircuit ? "V-I CHARACTERISTIC PLOT" : "COLOR INTENSITY CURVE"}
               </span>
               <span className="font-data-mono text-[9px] text-[#8da399]">
                 {graphLineType} line style
@@ -1170,8 +1249,8 @@ export default function Workspace() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#333333" />
                   <XAxis
                     dataKey="x"
-                    name={isCircuit ? "Voltage (V)" : "Volume Added (mL)"}
-                    unit={isCircuit ? "V" : "mL"}
+                    name={activeExpId === 'series-parallel' ? "Measurement" : isCircuit ? "Voltage (V)" : "Volume Added (mL)"}
+                    unit={activeExpId === 'series-parallel' ? "" : isCircuit ? "V" : "mL"}
                     stroke="#424845"
                     tick={{
                       fontSize: 10,
@@ -1181,8 +1260,8 @@ export default function Workspace() {
                   />
                   <YAxis
                     dataKey="y"
-                    name={isCircuit ? "Current (mA)" : "Color"}
-                    unit={isCircuit ? "mA" : ""}
+                    name={activeExpId === 'series-parallel' ? "Equivalent Resistance" : isCircuit ? "Current (mA)" : "Color"}
+                    unit={activeExpId === 'series-parallel' ? "Ω" : isCircuit ? "mA" : ""}
                     domain={isCircuit ? [0, "auto"] : [0, 1]}
                     stroke="#424845"
                     tick={{

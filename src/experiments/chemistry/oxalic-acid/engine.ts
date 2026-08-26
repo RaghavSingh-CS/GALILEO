@@ -16,14 +16,6 @@ import {
   deriveOxalicAcidTitrationResult,
 } from "../permanganate/named/oxalic-acid";
 
-function gaussianNoise(mean: number, stddevFraction: number): number {
-  if (stddevFraction <= 0) return mean;
-  const u1 = Math.max(1e-6, Math.random());
-  const u2 = Math.random();
-  const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-  return mean + z * stddevFraction;
-}
-
 function buildOxalicAcidTrial(volumeAdded: number, flaskTemperature: number) {
   let preparation = createOxalicAcidPreparation().state;
 
@@ -72,6 +64,7 @@ export const oxalicAcidEngine: SimulationEngine = {
   ],
 
   compute(inputs: Record<string, number>, options?: { noiseFraction?: number }): SimulationResult {
+    void options;
     const volAdded = inputs.volumeAdded ?? 0;
     const flaskTemperature = inputs.flaskTemperature ?? 55;
     const aliquotVolume = inputs.aliquotVolume ?? 10;
@@ -111,7 +104,7 @@ export const oxalicAcidEngine: SimulationEngine = {
         }
     }
     
-    const observedVolAdded = Math.max(0, gaussianNoise(volAdded, options?.noiseFraction ?? 0));
+    const observedVolAdded = Math.max(0, volAdded);
     
     return {
       colorIntensity: Math.max(0, Math.min(1, colorIntensity)),

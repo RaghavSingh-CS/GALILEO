@@ -9,7 +9,8 @@ export type OhmsLawIssueCode =
   | 'AMMETER_NOT_IN_SERIES' 
   | 'VOLTMETER_NOT_IN_PARALLEL' 
   | 'CIRCUIT_NOT_CLOSED'
-  | 'SHORT_CIRCUIT';
+  | 'SHORT_CIRCUIT'
+  | 'INVALID_CIRCUIT';
 
 export interface OhmsLawResult {
   usability: ExperimentUsability;
@@ -27,7 +28,9 @@ export type SeriesParallelIssueCode =
   | 'NOT_PURE_SERIES_OR_PARALLEL'
   | 'CIRCUIT_NOT_CLOSED'
   | 'SHORT_CIRCUIT'
-  | 'VOLTMETER_MISPLACED';
+  | 'AMMETER_MISPLACED'
+  | 'VOLTMETER_MISPLACED'
+  | 'INVALID_CIRCUIT';
 
 export interface SeriesParallelResult {
   usability: ExperimentUsability;

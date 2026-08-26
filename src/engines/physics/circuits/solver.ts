@@ -89,15 +89,6 @@ export function solveMNA(graph: ElectricalGraph): MNAResult {
   const A: number[][] = Array(N + M).fill(0).map(() => Array(N + M).fill(0));
   const z: number[] = Array(N + M).fill(0);
 
-  // PHY-026: GMIN Stepping (Implicit Resistance)
-  // Inject a microscopic conductance (1e-9 S) from every node to ground.
-  // This physically anchors floating nodes and gracefully eliminates 
-  // SINGULAR_MATRIX crashes without affecting educational-precision measurements.
-  const GMIN = 1e-9;
-  for (let i = 0; i < N; i++) {
-    A[i][i] += GMIN;
-  }
-
   // 5. Stamp resistive branches
   for (const branch of activeBranches) {
     if (branch.type === 'resistor' || branch.type === 'variable_resistor') {

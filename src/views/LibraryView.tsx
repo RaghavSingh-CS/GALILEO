@@ -39,6 +39,16 @@ export default function LibraryView() {
     },
     {
       id: "doc-2",
+      name: "Series_Parallel_Resistance_Lab_Manual.pdf",
+      subject: "Physics",
+      type: "Lab Manual",
+      modified: "2026-08-27",
+      size: "2.0 MB",
+      experimentId: "series-parallel",
+      desc: "Build series and parallel resistor networks and verify their equivalent resistance using circuit meters.",
+    },
+    {
+      id: "doc-3",
       name: "Oxalic_Acid_KMnO4_Standardization.pdf",
       subject: "Chemistry",
       type: "Protocol Guide",
@@ -48,7 +58,7 @@ export default function LibraryView() {
       desc: "Standardization of KMnO4 using 0.1M Oxalic Acid at 50-60°C. Self-indicating titration protocol.",
     },
     {
-      id: "doc-3",
+      id: "doc-4",
       name: "Mohrs_Salt_KMnO4_Standardization.pdf",
       subject: "Chemistry",
       type: "Protocol Guide",

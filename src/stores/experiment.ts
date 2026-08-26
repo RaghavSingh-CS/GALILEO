@@ -185,8 +185,6 @@ export const useExperimentStore = create<ExperimentSessionStore>((set, get) => (
       nodes: [],
       edges: [],
     });
-    // Wait for the next tick so UI can render default components
-    setTimeout(() => get().onNodesChange([]), 0);
   },
 
   startExperiment: () => set({ sessionStatus: 'running' }),
