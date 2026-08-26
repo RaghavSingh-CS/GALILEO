@@ -95,6 +95,99 @@ function detectZeroResistanceShorts(graph: ElectricalGraph): ValidationMessage[]
   return messages;
 }
 
+/**
+ * PHY-010 (Upgraded) — Detects loops of ideal voltage sources.
+ *
+ * Any closed loop consisting solely of ideal voltage sources (batteries, ammeters)
+ * creates an indeterminate or contradictory MNA system (Singular Matrix).
+ * Uses a Depth First Search (DFS) spanning tree approach to detect cycles.
+ */
+function detectVoltageSourceLoops(graph: ElectricalGraph): ValidationMessage[] {
+  const messages: ValidationMessage[] = [];
+  const vSourceBranches = graph.branches.filter(b => b.type === 'battery' || b.type === 'ammeter');
+
+  if (vSourceBranches.length === 0) return messages;
+
+  // Build adjacency list: node -> array of { neighbor, branchId, componentId }
+  const adj = new Map<string, { neighbor: string; branchId: string; componentId: string }[]>();
+  for (const b of vSourceBranches) {
+    if (!adj.has(b.nodeA)) adj.set(b.nodeA, []);
+    if (!adj.has(b.nodeB)) adj.set(b.nodeB, []);
+    adj.get(b.nodeA)!.push({ neighbor: b.nodeB, branchId: b.id, componentId: b.componentId });
+    adj.get(b.nodeB)!.push({ neighbor: b.nodeA, branchId: b.id, componentId: b.componentId });
+  }
+
+  const visitedNodes = new Set<string>();
+  
+  // DFS to find cycle
+  for (const startNode of adj.keys()) {
+    if (visitedNodes.has(startNode)) continue;
+
+    // Stack stores: [currentNode, parentBranchId, pathOfComponentIds]
+    const stack: { node: string; parentBranch: string | null; path: string[] }[] = [];
+    stack.push({ node: startNode, parentBranch: null, path: [] });
+
+    // Note: since it's an undirected graph, standard DFS cycle detection
+    // works by checking if we hit a visited node that isn't the parent.
+    // However, to extract the exact cycle, we just track the path.
+    const pathMap = new Map<string, string>(); // node -> parent node
+    const branchMap = new Map<string, string>(); // node -> branch componentId connecting from parent
+
+    const localVisited = new Set<string>();
+    let cycleFound = false;
+    let cycleNode = '';
+
+    while (stack.length > 0) {
+      const { node, parentBranch } = stack.pop()!;
+      if (localVisited.has(node)) {
+        cycleFound = true;
+        cycleNode = node;
+        break;
+      }
+      
+      localVisited.add(node);
+      visitedNodes.add(node);
+
+      for (const edge of adj.get(node) ?? []) {
+        if (edge.branchId === parentBranch) continue; // Don't go immediately back
+        
+        // If we see it again, it's a cycle.
+        if (localVisited.has(edge.neighbor)) {
+          // Push to stack so it gets processed as a cycle
+          pathMap.set(edge.neighbor, node);
+          branchMap.set(edge.neighbor, edge.componentId);
+          stack.push({ node: edge.neighbor, parentBranch: edge.branchId, path: [] });
+        } else {
+          pathMap.set(edge.neighbor, node);
+          branchMap.set(edge.neighbor, edge.componentId);
+          stack.push({ node: edge.neighbor, parentBranch: edge.branchId, path: [] });
+        }
+      }
+    }
+
+    if (cycleFound) {
+      // Reconstruct cycle (simplistic collection of all visited v-sources in this subgraph component)
+      // For educational simplicity, if a loop exists, we flag all voltage sources in that connected subgraph.
+      const loopComponentIds = new Set<string>();
+      for (const edge of vSourceBranches) {
+        if (localVisited.has(edge.nodeA) && localVisited.has(edge.nodeB)) {
+          loopComponentIds.add(edge.componentId);
+        }
+      }
+      
+      messages.push({
+        ruleId: 'PARALLEL_IDEAL_SOURCES',
+        severity: 'error',
+        message: 'The circuit contains a closed loop made entirely of batteries and/or ammeters. Ideal voltage sources in a loop create a contradictory system.',
+        componentIds: Array.from(loopComponentIds),
+      });
+      return messages; // Return early, one loop is enough to fail
+    }
+  }
+
+  return messages;
+}
+
 export function validateGraph(graph: ElectricalGraph, state: CircuitState): ValidationMessage[] {
   const messages: ValidationMessage[] = [];
 
@@ -161,6 +254,10 @@ export function validateGraph(graph: ElectricalGraph, state: CircuitState): Vali
 
   // ── SHORT_CIRCUIT (PHY-007: full zero-resistance path detection) ─────────
   messages.push(...detectZeroResistanceShorts(graph));
+
+  // ── PARALLEL_IDEAL_SOURCES (PHY-010) ─────────────────────────────────────
+  // Must run before MNA to catch closed loops of ideal voltage sources.
+  messages.push(...detectVoltageSourceLoops(graph));
 
   // PHY-008: Use conductive components for all connectivity-based checks.
   // This ensures voltmeter-only links do not falsely connect subgraphs.

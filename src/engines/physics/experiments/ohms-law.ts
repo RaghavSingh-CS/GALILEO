@@ -59,21 +59,29 @@ export function verifyOhmsLawExperiment(state: CircuitState): OhmsLawResult {
     const ammeter = ammeters[0];
     const voltmeter = voltmeters[0];
 
-    const resistorBranch = graph.branches.find((b: any) => b.componentId === resistor.id);
-    const ammeterBranch = graph.branches.find((b: any) => b.componentId === ammeter.id);
-    const voltmeterBranch = graph.branches.find((b: any) => b.componentId === voltmeter.id);
+    const resistorBranch = graph.branches.find(b => b.componentId === resistor.id);
+    const ammeterBranch = graph.branches.find(b => b.componentId === ammeter.id);
+    const voltmeterBranch = graph.branches.find(b => b.componentId === voltmeter.id);
 
     if (resistorBranch && ammeterBranch && voltmeterBranch) {
-      // Voltmeter is in parallel if it connects the exact same two nodes as the resistor
-      const rNodes = new Set([resistorBranch.nodeA, resistorBranch.nodeB]);
-      const isParallel = rNodes.has(voltmeterBranch.nodeA) && rNodes.has(voltmeterBranch.nodeB);
-      
-      if (!isParallel) {
+      // Guard: voltmeter shorted (both terminals on the same node) reads 0V.
+      // The isParallel check below would incorrectly return true because
+      // rNodes.has(nodeA) && rNodes.has(nodeA) passes when nodeA === nodeB
+      // and nodeA is within the resistor nodes. Catch this first.
+      if (voltmeterBranch.nodeA === voltmeterBranch.nodeB) {
         issues.push('VOLTMETER_NOT_IN_PARALLEL');
+      } else {
+        // Voltmeter is in parallel if it connects the exact same two nodes as the resistor
+        const rNodes = new Set([resistorBranch.nodeA, resistorBranch.nodeB]);
+        const isParallel = rNodes.has(voltmeterBranch.nodeA) && rNodes.has(voltmeterBranch.nodeB);
+        
+        if (!isParallel) {
+          issues.push('VOLTMETER_NOT_IN_PARALLEL');
+        }
       }
 
       // Ammeter is in series if it shares exactly one node with the resistor, and that node has degree 2 in the conductive graph.
-      const conductiveBranches = graph.branches.filter((b: any) => b.type !== 'voltmeter');
+      const conductiveBranches = graph.branches.filter(b => b.type !== 'voltmeter');
       const nodeDegree = new Map<string, number>();
       for (const b of conductiveBranches) {
         nodeDegree.set(b.nodeA, (nodeDegree.get(b.nodeA) || 0) + 1);

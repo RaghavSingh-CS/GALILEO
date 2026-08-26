@@ -220,4 +220,83 @@ describe('Integrity Validator', () => {
     const messages = validateIntegrity(validState());
     expect(messages.length).toBe(0);
   });
+
+  // ── PHY-004/PHY-024: Null terminal crash fix ──────────────────────────────
+
+  it('PHY-024: terminals:[null,null] returns MALFORMED_INPUT, does not throw', () => {
+    const state = {
+      components: [{
+        id: 'r1', type: 'resistor', resistance: 100,
+        terminals: [null, null]
+      }],
+      wires: []
+    };
+    expect(() => validateIntegrity(state)).not.toThrow();
+    const messages = validateIntegrity(state);
+    expect(messages.some(m => m.ruleId === 'MALFORMED_INPUT')).toBe(true);
+    expect(messages.every(m => m.severity === 'error')).toBe(true);
+  });
+
+  it('PHY-024: terminals:[42,"string"] returns MALFORMED_INPUT, does not throw', () => {
+    const state = {
+      components: [{
+        id: 'r1', type: 'resistor', resistance: 100,
+        terminals: [42, 'string']
+      }],
+      wires: []
+    };
+    expect(() => validateIntegrity(state)).not.toThrow();
+    const messages = validateIntegrity(state);
+    expect(messages.some(m => m.ruleId === 'MALFORMED_INPUT')).toBe(true);
+  });
+
+  it('PHY-004: battery with wrong terminal roles returns INVALID_TERMINAL_ROLE', () => {
+    const state = {
+      components: [{
+        id: 'b1', type: 'battery', voltage: 9,
+        terminals: [
+          { id: 'b1:a', componentId: 'b1', role: 'a' },       // wrong: should be 'positive'
+          { id: 'b1:b', componentId: 'b1', role: 'b' }        // wrong: should be 'negative'
+        ]
+      }],
+      wires: []
+    };
+    const messages = validateIntegrity(state);
+    const roleErrors = messages.filter(m => m.ruleId === 'INVALID_TERMINAL_ROLE');
+    expect(roleErrors.length).toBe(2);
+    expect(roleErrors[0].severity).toBe('error');
+    expect(roleErrors[0].message).toContain('positive');
+    expect(roleErrors[1].message).toContain('negative');
+  });
+
+  it('PHY-004: ammeter with correct in/out roles passes role check', () => {
+    const state: CircuitState = {
+      components: [{
+        id: 'a1', type: 'ammeter',
+        terminals: [
+          { id: 'a1:in', componentId: 'a1', role: 'in' },
+          { id: 'a1:out', componentId: 'a1', role: 'out' }
+        ]
+      }],
+      wires: []
+    };
+    const messages = validateIntegrity(state);
+    expect(messages.filter(m => m.ruleId === 'INVALID_TERMINAL_ROLE').length).toBe(0);
+  });
+
+  it('PHY-004: voltmeter with wrong roles returns INVALID_TERMINAL_ROLE', () => {
+    const state = {
+      components: [{
+        id: 'v1', type: 'voltmeter',
+        terminals: [
+          { id: 'v1:in', componentId: 'v1', role: 'in' },     // wrong: should be 'positive'
+          { id: 'v1:out', componentId: 'v1', role: 'out' }    // wrong: should be 'negative'
+        ]
+      }],
+      wires: []
+    };
+    const messages = validateIntegrity(state);
+    expect(messages.filter(m => m.ruleId === 'INVALID_TERMINAL_ROLE').length).toBe(2);
+  });
 });
+

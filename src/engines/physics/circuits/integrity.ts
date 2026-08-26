@@ -24,6 +24,20 @@ const VALID_COMPONENT_TYPES = new Set([
   'voltmeter',
 ]);
 
+/**
+ * PHY-004 — Required terminal roles per component type.
+ * terminal[0] role → terminal[1] role.
+ * Enforced in checkTerminalOwnership after structural shape is confirmed.
+ */
+const REQUIRED_ROLES: Record<string, [string, string]> = {
+  battery:           ['positive', 'negative'],
+  resistor:          ['a', 'b'],
+  variable_resistor: ['a', 'b'],
+  switch:            ['a', 'b'],
+  ammeter:           ['in', 'out'],
+  voltmeter:         ['positive', 'negative'],
+};
+
 // ─── Structural shape guards ────────────────────────────────────────────────
 
 function isNonEmptyString(v: unknown): v is string {
@@ -111,13 +125,16 @@ function checkComponentShape(comp: unknown, index: number): ValidationMessage | 
     };
   }
 
-  for (let i = 0; i < c['terminals'].length; i++) {
-    const t = c['terminals'][i];
-    if (t === null || typeof t !== 'object') {
+  // PHY-004/PHY-024: Verify each terminal element is a non-null object.
+  // Without this, terminals:[null, null] passes the length check and then
+  // crashes with TypeError inside checkDuplicateTerminalIds.
+  for (let t = 0; t < 2; t++) {
+    const term = (c['terminals'] as unknown[])[t];
+    if (term === null || term === undefined || typeof term !== 'object' || Array.isArray(term)) {
       return {
         ruleId: 'MALFORMED_INPUT',
         severity: 'error',
-        message: `Component '${c['id']}' has a malformed terminal at index ${i}.`,
+        message: `Component '${c['id']}' has an invalid terminal at index ${t}. Each terminal must be an object with 'id', 'role', and 'componentId'.`,
         componentIds: [c['id'] as string],
       };
     }
@@ -230,7 +247,11 @@ function checkTerminalOwnership(components: Component[]): ValidationMessage[] {
   const messages: ValidationMessage[] = [];
 
   for (const comp of components) {
-    for (const term of comp.terminals) {
+    const expectedRoles = REQUIRED_ROLES[comp.type];
+
+    for (let t = 0; t < comp.terminals.length; t++) {
+      const term = comp.terminals[t];
+
       if (!isNonEmptyString(term.id)) {
         messages.push({
           ruleId: 'MALFORMED_TERMINAL',
@@ -246,6 +267,15 @@ function checkTerminalOwnership(components: Component[]): ValidationMessage[] {
           ruleId: 'MALFORMED_TERMINAL',
           severity: 'error',
           message: `Terminal '${term.id}' in component '${comp.id}' has a missing or invalid role.`,
+          componentIds: [comp.id],
+        });
+      } else if (expectedRoles && term.role !== expectedRoles[t]) {
+        // PHY-004: Enforce required role values per component type.
+        // Prevents polarity/direction ambiguity at the UI adapter boundary.
+        messages.push({
+          ruleId: 'INVALID_TERMINAL_ROLE',
+          severity: 'error',
+          message: `Terminal '${term.id}' (index ${t}) in ${comp.type} '${comp.id}' has role '${term.role}', expected '${expectedRoles[t]}'.`,
           componentIds: [comp.id],
         });
       }

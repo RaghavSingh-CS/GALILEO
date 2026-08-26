@@ -53,11 +53,14 @@ export function extractMeasurements(
     }
     // Note: 'switch' is intentionally absent — see module-level comment (PHY-011).
 
+    const power = Math.abs(voltageDrop * current);
+
     branchData.push({
       componentId: branch.componentId,
       type: branch.type,
       voltage: voltageDrop,
-      current
+      current,
+      power
     });
 
     if (branch.type === 'ammeter') {

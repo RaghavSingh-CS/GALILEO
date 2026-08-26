@@ -86,11 +86,36 @@ export function verifySeriesParallelExperiment(state: CircuitState): SeriesParal
       issues.push('NOT_PURE_SERIES_OR_PARALLEL');
     }
 
-    // Equivalent resistance is total V / total I
-    // The battery sees this exact equivalent resistance (assuming ammeter is ideal R=0).
+    // NEW-001/PHY-021: Validate voltmeter placement.
+    // The voltmeter must span the resistor network — it cannot be shorted
+    // to a single node (measuring nothing) or connected outside the network.
+    const voltmeter = voltmeters[0];
+    const vmBranch = graph.branches.find(b => b.componentId === voltmeter.id);
+    if (vmBranch) {
+      if (vmBranch.nodeA === vmBranch.nodeB) {
+        // Both terminals collapsed to same node — voltmeter measures 0V across nothing.
+        issues.push('VOLTMETER_MISPLACED');
+      } else {
+        // Collect all nodes that belong to the resistor network.
+        const rNodeSet = new Set<string>();
+        for (const rb of rBranches) {
+          rNodeSet.add(rb.nodeA);
+          rNodeSet.add(rb.nodeB);
+        }
+        // Both voltmeter terminals must connect to resistor-network nodes.
+        // If either terminal is outside the network, the student is not
+        // measuring the equivalent resistance of the experiment.
+        if (!rNodeSet.has(vmBranch.nodeA) || !rNodeSet.has(vmBranch.nodeB)) {
+          issues.push('VOLTMETER_MISPLACED');
+        }
+      }
+    }
+
+    // Always compute equivalent resistance from solver data when the circuit is solved.
+    // This is a physical measurement, independent of whether the configuration
+    // meets the lab's pedagogical requirements.
     const battery = batteries[0];
     const batBranch = result.branchData.find(b => b.componentId === battery.id);
-    
     if (batBranch && Math.abs(batBranch.current) > 1e-9) {
       totalVoltageV = battery.voltage;
       totalCurrentA = Math.abs(batBranch.current);
@@ -103,6 +128,7 @@ export function verifySeriesParallelExperiment(state: CircuitState): SeriesParal
   } else if (hasBasicComponents && issues.length === 0) {
     usability = 'in-progress';
   }
+
 
   return {
     usability,
