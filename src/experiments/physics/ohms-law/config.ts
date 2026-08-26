@@ -7,26 +7,7 @@ export const ohmsLawConfig: ExperimentConfig = {
   description:
     "Verify the linear relationship between voltage and current across a resistor at constant resistance.",
   aim: "To verify Ohm's law by studying the relationship between the potential difference (V) across a resistor and the electric current (I) flowing through it, and to determine the resistance of the resistor from the V-I characteristic curve.",
-  apparatus: [
-    {
-      id: "voltage",
-      label: "Voltage",
-      unit: "V",
-      min: 0,
-      max: 20,
-      step: 0.5,
-      default: 5,
-    },
-    {
-      id: "resistance",
-      label: "Resistance",
-      unit: "Ω",
-      min: 10,
-      max: 1000,
-      step: 10,
-      default: 100,
-    },
-  ],
+  apparatus: [],
   procedure: [
     "Connect the ammeter in series and the voltmeter in parallel across the resistance wire in the circuit.",
     "Set the resistance to the desired value using the apparatus controls.",

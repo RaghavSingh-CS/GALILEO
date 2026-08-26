@@ -6,26 +6,7 @@ export const seriesParallelConfig: ExperimentConfig = {
   subject: "physics",
   description: "Investigate equivalent resistance in series and parallel circuit configurations.",
   aim: "Determine how the total equivalent resistance of a circuit changes when resistors are connected in series versus parallel.",
-  apparatus: [
-    {
-      id: "voltage",
-      label: "Source Voltage",
-      unit: "V",
-      min: 1.0,
-      max: 24.0,
-      step: 1.0,
-      default: 12.0,
-    },
-    {
-      id: "resistance",
-      label: "Component Resistance",
-      unit: "Ω",
-      min: 10,
-      max: 1000,
-      step: 10,
-      default: 100,
-    },
-  ],
+  apparatus: [],
   procedure: [
     "1. Connect two or more resistors in a series circuit with the DC power supply.",
     "2. Connect the ammeter in series and voltmeter in parallel to measure total current and voltage.",

@@ -4,7 +4,11 @@ import { useExperimentStore } from "@/stores/experiment";
 import { useSettingsStore } from "@/stores/settings";
 import { getExperiment, getAllExperiments } from "@/experiments/registry";
 import { analyzeOhmsLaw } from "@/experiments/physics/ohmsLawAnalysis";
-import CircuitFlowCanvas from "@/renderers/circuit-flow/CircuitFlowCanvas";
+import { CircuitSandbox } from '@/experiments/physics/components/CircuitSandbox';
+import { ValidationPanel } from '@/experiments/physics/components/ValidationPanel';
+import type { Node } from '@xyflow/react';
+import type { SimulationResult } from '@/engines/physics/circuits/types';
+import type { OhmsLawIssueCode, SeriesParallelIssueCode, ExperimentUsability } from '@/engines/physics/experiments/types';
 import GalileoChat from "@/panels/GalileoChat";
 import { SaveExperimentModal } from "@/panels/Modals";
 import {
@@ -39,6 +43,7 @@ export default function Workspace() {
   const liveCircuitCurrent = useExperimentStore((s) => s.liveCircuitCurrent);
   const sessionStatus = useExperimentStore((s) => s.sessionStatus);
   const setSessionStatus = useExperimentStore((s) => s.setSessionStatus);
+  const chatContextKey = useExperimentStore((s) => s.chatContextKey);
   const notes = useExperimentStore((s) => s.notes);
   const setNotes = useExperimentStore((s) => s.setNotes);
   const validationMessages = useExperimentStore((s) => s.validationMessages);
@@ -50,6 +55,37 @@ export default function Workspace() {
   // ── Resizable Panel Dimensions (Pixels) ──
   const [apparatusWidth, setApparatusWidth] = useState(280);
   const [obsWidth, setObsWidth] = useState(360);
+  // Sandbox state synced from CircuitSandbox
+  const [sandboxNodes, setSandboxNodes] = useState<Node[]>([]);
+  const [sandboxSimResult, setSandboxSimResult] = useState<SimulationResult | null>(null);
+  const [sandboxIssues, setSandboxIssues] = useState<(OhmsLawIssueCode | SeriesParallelIssueCode)[]>([]);
+  const [sandboxUsability, setSandboxUsability] = useState<ExperimentUsability>('usable');
+
+  const [selectedAmmeterId, setSelectedAmmeterId] = useState<string | null>(null);
+  const [selectedVoltmeterId, setSelectedVoltmeterId] = useState<string | null>(null);
+
+  // Auto-assign meters
+  useEffect(() => {
+    const ammeters = sandboxNodes.filter(n => n.type === 'ammeter');
+    const voltmeters = sandboxNodes.filter(n => n.type === 'voltmeter');
+
+    // If selected meter deleted, clear it
+    if (selectedAmmeterId && !ammeters.some(a => a.id === selectedAmmeterId)) {
+      setSelectedAmmeterId(null);
+    }
+    if (selectedVoltmeterId && !voltmeters.some(v => v.id === selectedVoltmeterId)) {
+      setSelectedVoltmeterId(null);
+    }
+
+    // If exactly one exists and none selected, auto-select
+    if (ammeters.length === 1 && !selectedAmmeterId) {
+      setSelectedAmmeterId(ammeters[0].id);
+    }
+    if (voltmeters.length === 1 && !selectedVoltmeterId) {
+      setSelectedVoltmeterId(voltmeters[0].id);
+    }
+  }, [sandboxNodes, selectedAmmeterId, selectedVoltmeterId]);
+
   const [chatWidth, setChatWidth] = useState(320);
   const [obsTableHeight, setObsTableHeight] = useState(190);
 
@@ -80,6 +116,8 @@ export default function Workspace() {
   useEffect(() => {
     if (!entry) return;
     const paramIds = entry.config.apparatus.map((p) => p.id);
+    if (paramIds.length === 0) return;
+    
     const hasMatchingParams =
       Object.keys(apparatusValues).length > 0 &&
       paramIds.some((id) => id in apparatusValues);
@@ -120,10 +158,27 @@ export default function Workspace() {
       : null;
   }, [entry, apparatusValues, noiseFraction]);
 
+  const isCircuit = entry?.config.subject === 'physics';
+
   const handleTakeReading = () => {
-    if (!entry || !liveResult) return;
-    addObservation(apparatusValues, liveResult);
+    if (!entry) return;
+
+    if (isCircuit) {
+      if (!selectedAmmeterId || !selectedVoltmeterId || !sandboxSimResult) return;
+      const vReading = sandboxSimResult.readings.find(r => r.componentId === selectedVoltmeterId)?.value ?? 0;
+      const iReading = sandboxSimResult.readings.find(r => r.componentId === selectedAmmeterId)?.value ?? 0;
+      // Record specifically for V-I graph
+      addObservation({ voltage: vReading, resistance: 0 }, { current: iReading });
+    } else {
+      if (!liveResult) return;
+      addObservation(apparatusValues, liveResult);
+    }
   };
+
+  // Determine if capture is allowed
+  const canCapture = isCircuit 
+    ? (selectedAmmeterId !== null && selectedVoltmeterId !== null)
+    : (sessionStatus !== "invalid");
 
   const handleReset = () => {
     if (!entry) return;
@@ -134,26 +189,12 @@ export default function Workspace() {
     startSession(activeExpId, defaults);
   };
 
-  // Automated sweep for Ohm's Law or Titration with configurable speed
+  // Automated sweep for Titration with configurable speed
   useEffect(() => {
     if (sessionStatus !== "running" || !entry) return;
     const intervalMs = getSweepIntervalMs();
 
-    if (entry.config.id === "ohms-law") {
-      const interval = setInterval(() => {
-        const currentV = apparatusValues.voltage ?? 0;
-        if (currentV >= 20) {
-          setSessionStatus("complete");
-          return;
-        }
-        const nextV = Math.min(20, Math.round((currentV + 2) * 10) / 10);
-        setApparatusValue("voltage", nextV);
-        const newVals = { ...apparatusValues, voltage: nextV };
-        const outputs = entry.engine.compute(newVals, { noiseFraction });
-        addObservation(newVals, outputs);
-      }, intervalMs);
-      return () => clearInterval(interval);
-    } else if (entry.config.id === "titration-analysis") {
+    if (entry.config.id === "titration-analysis") {
       const interval = setInterval(() => {
         const currentVol = apparatusValues.volumeAdded ?? 0;
         const rate = apparatusValues.flowRate ?? 0.5;
@@ -317,12 +358,8 @@ export default function Workspace() {
     };
   }, [activeDrag, apparatusWidth, obsWidth, chatWidth, galileoPanelOpen]);
 
-  const isCircuit = entry?.config.subject === "physics";
-
   const currentVoltage = apparatusValues.voltage ?? 5;
-  const currentResistance = apparatusValues.resistance ?? 100;
   const liveCurrent = isCircuit ? liveCircuitCurrent : (liveResult?.current ?? 0);
-  const livePower = isCircuit ? liveCircuitPower : (liveResult?.power ?? 0);
 
   const titrantVol = apparatusValues.volumeAdded ?? 0;
   const stirrerRPM = apparatusValues.stirrerSpeed ?? 300;
@@ -523,39 +560,39 @@ export default function Workspace() {
           )}
 
           {/* Auto Simulation Sweep */}
-          <div className="bg-[#20201f] border border-[#424845] rounded-lg p-3.5 flex flex-col gap-2">
-            <div className="flex justify-between items-center">
-              <span className="font-label-caps text-[10px] text-[#c2c8c4]">
-                {isCircuit ? "AUTO VOLTAGE SWEEP" : "CONTINUOUS TITRATION"}
-              </span>
-              <span className="font-data-mono text-[10px] text-[#8da399]">
-                {sessionStatus.toUpperCase()}
-              </span>
+          {!isCircuit && (
+            <div className="bg-[#20201f] border border-[#424845] rounded-lg p-3.5 flex flex-col gap-2">
+              <div className="flex justify-between items-center">
+                <span className="font-label-caps text-[10px] text-[#c2c8c4]">
+                  CONTINUOUS TITRATION
+                </span>
+                <span className="font-data-mono text-[10px] text-[#8da399]">
+                  {sessionStatus.toUpperCase()}
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={sessionStatus === "invalid"}
+                onClick={() =>
+                  setSessionStatus(sessionStatus === "running" ? "paused" : "running")
+                }
+                className={`w-full py-2 rounded text-xs font-label-caps flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                  sessionStatus === "invalid"
+                    ? "bg-[#353535] text-[#8c8c8c] border border-[#424845] cursor-not-allowed opacity-50"
+                    : sessionStatus === "running"
+                    ? "bg-[#93000a] text-[#ffdad6] border border-[#ffb4ab]/30 hover:bg-[#690005]"
+                    : "bg-[#353535] hover:bg-[#424845] text-[#e5e2e1] border border-[#424845]"
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">
+                  {sessionStatus === "running" ? "pause" : "fast_forward"}
+                </span>
+                {sessionStatus === "running"
+                  ? "Pause Simulation"
+                  : "Continuous Flow Simulation"}
+              </button>
             </div>
-            <button
-              type="button"
-              disabled={sessionStatus === "invalid"}
-              onClick={() =>
-                setSessionStatus(sessionStatus === "running" ? "paused" : "running")
-              }
-              className={`w-full py-2 rounded text-xs font-label-caps flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                sessionStatus === "invalid"
-                  ? "bg-[#353535] text-[#8c8c8c] border border-[#424845] cursor-not-allowed opacity-50"
-                  : sessionStatus === "running"
-                  ? "bg-[#93000a] text-[#ffdad6] border border-[#ffb4ab]/30 hover:bg-[#690005]"
-                  : "bg-[#353535] hover:bg-[#424845] text-[#e5e2e1] border border-[#424845]"
-              }`}
-            >
-              <span className="material-symbols-outlined text-[16px]">
-                {sessionStatus === "running" ? "pause" : "fast_forward"}
-              </span>
-              {sessionStatus === "running"
-                ? "Pause Simulation"
-                : isCircuit
-                ? "Automated Sweep (0 → 20V)"
-                : "Continuous Flow Simulation"}
-            </button>
-          </div>
+          )}
 
           {/* Real-time Telemetry Card */}
           <div className="bg-[#20201f] border border-[#424845] rounded-lg p-4 flex flex-col gap-3">
@@ -567,20 +604,34 @@ export default function Workspace() {
                 <>
                   <div className="bg-[#131313] border border-[#333333] p-2.5 rounded">
                     <div className="font-label-caps text-[9px] text-[#c2c8c4] mb-1">
-                      CURRENT (I)
+                      VOLTAGE (V)
                     </div>
                     <div className="font-data-mono text-base text-[#b5ccc1] font-semibold">
-                      {liveCurrent.toFixed(2)}
-                      <span className="text-[10px] text-[#c2c8c4] ml-1">mA</span>
+                      {(() => {
+                        const r = selectedVoltmeterId ? sandboxNodes.find(n => n.id === selectedVoltmeterId)?.data?.reading : undefined;
+                        return typeof r === 'number' ? (
+                          <>
+                            {r.toFixed(2)}
+                            <span className="text-[10px] text-[#c2c8c4] ml-1">V</span>
+                          </>
+                        ) : '—';
+                      })()}
                     </div>
                   </div>
                   <div className="bg-[#131313] border border-[#333333] p-2.5 rounded">
                     <div className="font-label-caps text-[9px] text-[#c2c8c4] mb-1">
-                      POWER (P)
+                      CURRENT (I)
                     </div>
-                    <div className="font-data-mono text-base text-[#bdc9c8] font-semibold">
-                      {livePower.toFixed(2)}
-                      <span className="text-[10px] text-[#c2c8c4] ml-1">mW</span>
+                    <div className="font-data-mono text-base text-[#b5ccc1] font-semibold">
+                      {(() => {
+                        const r = selectedAmmeterId ? sandboxNodes.find(n => n.id === selectedAmmeterId)?.data?.reading : undefined;
+                        return typeof r === 'number' ? (
+                          <>
+                            {r.toFixed(3)}
+                            <span className="text-[10px] text-[#c2c8c4] ml-1">A</span>
+                          </>
+                        ) : '—';
+                      })()}
                     </div>
                   </div>
                 </>
@@ -608,8 +659,8 @@ export default function Workspace() {
             </div>
           </div>
 
-          {/* Validation Message UI */}
-          {sessionStatus === "invalid" && validationMessages && validationMessages.length > 0 && (
+          {/* Validation Message UI is now managed below in ValidationPanel / circuit-specific */}
+          {!isCircuit && sessionStatus === "invalid" && validationMessages && validationMessages.length > 0 && (
             <div className="bg-[#4a1919] border border-[#ffb4ab] rounded p-2.5 flex flex-col gap-1.5 mt-2 shadow-inner">
               <div className="flex items-center gap-1.5 font-label-caps text-[10px] text-[#ffb4ab] font-bold">
                 <span className="material-symbols-outlined text-[14px]">error</span>
@@ -623,21 +674,78 @@ export default function Workspace() {
             </div>
           )}
 
+          {isCircuit && (
+            <div className="mt-4 flex flex-col gap-4">
+              <div className="border border-[#424845] bg-[#20201f] rounded-lg p-3 relative shadow-inner">
+                <h3 className="text-[10px] font-semibold text-[#c2c8c4] mb-2 font-label-caps tracking-wider">RECORDING METERS</h3>
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-[#8da399]">Voltage Source</span>
+                    <select 
+                      className="bg-[#131313] border border-[#333333] text-[#e5e2e1] p-1 rounded font-data-mono text-[11px] w-44"
+                      value={selectedVoltmeterId ?? ""}
+                      onChange={e => setSelectedVoltmeterId(e.target.value)}
+                    >
+                      <option value="" disabled>Select Voltmeter...</option>
+                      {sandboxNodes.filter(n => n.type === 'voltmeter').map(n => (
+                        <option key={n.id} value={n.id}>
+                          {n.data?.label as string || 'Voltmeter'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex justify-between items-center text-xs mt-1">
+                    <span className="text-[#8da399]">Current Source</span>
+                    <select 
+                      className="bg-[#131313] border border-[#333333] text-[#e5e2e1] p-1 rounded font-data-mono text-[11px] w-44"
+                      value={selectedAmmeterId ?? ""}
+                      onChange={e => setSelectedAmmeterId(e.target.value)}
+                    >
+                      <option value="" disabled>Select Ammeter...</option>
+                      {sandboxNodes.filter(n => n.type === 'ammeter').map(n => (
+                        <option key={n.id} value={n.id}>
+                          {n.data?.label as string || 'Ammeter'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="relative">
+                <ValidationPanel 
+                  issues={sandboxIssues} 
+                  usability={sandboxUsability} 
+                />
+              </div>
+            </div>
+          )}
+
           {/* Primary Take Reading Action Button */}
           <button
             type="button"
             onClick={handleTakeReading}
-            disabled={sessionStatus === "invalid"}
+            disabled={!canCapture}
             className={`mt-auto w-full font-label-caps text-xs py-3.5 rounded-lg transition-all flex justify-center items-center gap-2 font-bold shadow-lg border ${
-              sessionStatus === "invalid"
+              !canCapture
                 ? "bg-[#353535] text-[#8c8c8c] border-[#424845] cursor-not-allowed opacity-50"
                 : "bg-[#8da399] hover:bg-[#b5ccc1] text-[#21342d] cursor-pointer active:scale-95 border-[#8da399]"
             }`}
-            title="Record current physical measurement into observations table"
+            title={
+              !canCapture && isCircuit 
+                ? "Add and select a voltmeter and ammeter to record readings" 
+                : "Record current physical measurement into observations table"
+            }
           >
             <span className="material-symbols-outlined text-[18px]">add_circle</span>
             Take Reading
           </button>
+          
+          {!canCapture && isCircuit && (
+            <div className="text-[10px] text-amber-400 text-center mt-1">
+              Add and select a voltmeter and ammeter to record readings
+            </div>
+          )}
         </aside>
 
         {/* ── Drag Handle: Apparatus Resizer ── */}
@@ -722,16 +830,18 @@ export default function Workspace() {
                   </div>
 
                   <div className="flex-1 w-full h-full">
-                    <CircuitFlowCanvas />
+                    <CircuitSandbox 
+                      key={chatContextKey}
+                      experimentType={activeExpId as 'ohms-law' | 'series-parallel'} 
+                      onSimulationUpdate={(nodes, simResult, issues, usability) => {
+                        setSandboxNodes(nodes);
+                        setSandboxSimResult(simResult);
+                        setSandboxIssues(issues);
+                        setSandboxUsability(usability);
+                      }}
+                    />
                   </div>
 
-                  <div className="w-full bg-[#131313] border-t border-[#424845] p-2 flex justify-between items-center text-xs font-data-mono text-[#c2c8c4] shrink-0">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-[#8da399] animate-pulse" />
-                      <span>Conductance: {(1 / currentResistance).toFixed(4)} S</span>
-                    </div>
-                    <span>Power: {livePower.toFixed(2)} mW</span>
-                  </div>
                 </div>
               ) : (
                 /* Schematic 2: Titration Glassware Apparatus */
@@ -926,15 +1036,7 @@ export default function Workspace() {
               </span>
             </div>
             <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setSaveModalOpen(true)}
-                className="text-[#c2c8c4] hover:text-[#8da399] transition-colors p-1 rounded hover:bg-[#353535] cursor-pointer flex items-center gap-1 text-[11px] font-label-caps"
-                title="Store this session in My Experiments archive"
-              >
-                <span className="material-symbols-outlined text-[16px]">bookmark_add</span>
-                <span>Save Run</span>
-              </button>
+
               <button
                 type="button"
                 onClick={exportCSV}

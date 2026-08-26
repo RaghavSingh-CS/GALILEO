@@ -135,13 +135,11 @@ function detectVoltageSourceLoops(graph: ElectricalGraph): ValidationMessage[] {
 
     const localVisited = new Set<string>();
     let cycleFound = false;
-    let cycleNode = '';
 
     while (stack.length > 0) {
       const { node, parentBranch } = stack.pop()!;
       if (localVisited.has(node)) {
         cycleFound = true;
-        cycleNode = node;
         break;
       }
       

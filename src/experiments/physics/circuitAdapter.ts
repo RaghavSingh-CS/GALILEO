@@ -88,7 +88,7 @@ function mapNodeToComponent(node: Node): Component | null {
  * Translates React Flow nodes and edges into the canonical CircuitState
  * required by the Physics Engine.
  */
-export function translateToCircuitState(nodes: Node[], edges: Edge[]): CircuitState {
+export function buildCircuitState(nodes: Node[], edges: Edge[]): CircuitState {
   const components: Component[] = [];
   
   for (const node of nodes) {
@@ -96,14 +96,17 @@ export function translateToCircuitState(nodes: Node[], edges: Edge[]): CircuitSt
     if (comp) components.push(comp);
   }
 
-  const wires: Wire[] = edges.map(e => ({
+  // Ensure handles are defined, map directly from edge handles since they match Terminal.id format
+  const wires: Wire[] = edges.filter(e => e.sourceHandle && e.targetHandle).map(e => ({
     id: e.id,
-    sourceTerminalId: `${e.source}:${e.sourceHandle}`,
-    targetTerminalId: `${e.target}:${e.targetHandle}`
+    sourceTerminalId: e.sourceHandle!,
+    targetTerminalId: e.targetHandle!
   }));
 
   return { components, wires };
 }
+
+export const translateToCircuitState = buildCircuitState;
 
 /**
  * PHY-020: Strips stale edges connected to deleted nodes before engine processing.
