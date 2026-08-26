@@ -29,7 +29,7 @@ export function NewExperimentModal({ isOpen, onClose }: ModalProps) {
     if (newSubject === "physics") {
       setTemplate("ohms-law");
     } else if (newSubject === "chemistry") {
-      setTemplate("titration-analysis");
+      setTemplate("oxalic-acid-titration");
     }
   };
 
@@ -37,7 +37,7 @@ export function NewExperimentModal({ isOpen, onClose }: ModalProps) {
     setTemplate(newTemplate);
     if (newTemplate === "ohms-law") {
       setSubject("physics");
-    } else if (newTemplate === "titration-analysis") {
+    } else if (newTemplate === "oxalic-acid-titration" || newTemplate === "mohrs-salt-titration") {
       setSubject("chemistry");
     }
   };
@@ -127,7 +127,10 @@ export function NewExperimentModal({ isOpen, onClose }: ModalProps) {
                 {subject === "physics" ? (
                   <option value="ohms-law">Circuit Fundamentals (Ohm's Law)</option>
                 ) : (
-                  <option value="titration-analysis">Titration Analysis (Acid-Base)</option>
+                  <>
+                    <option value="oxalic-acid-titration">Oxalic Acid KMnO4 Standardization (Self-indicating)</option>
+                    <option value="mohrs-salt-titration">Mohr's Salt KMnO4 Standardization</option>
+                  </>
                 )}
               </select>
             </div>
@@ -344,12 +347,20 @@ export function LibraryModal({ isOpen, onClose }: ModalProps) {
       experimentId: "ohms-law",
     },
     {
-      id: "titration-analysis",
-      title: "Acid-Base Titration & Neutralization Protocol",
+      id: "oxalic-acid-titration",
+      title: "Oxalic Acid & KMnO4 Standardization Protocol",
       subject: "Chemistry",
-      equations: "M₁V₁ = M₂V₂ · pH = -log[H⁺]",
-      desc: "Standard neutralization curves using 0.1M HCl and 0.1M NaOH with phenolphthalein indicator endpoint analysis.",
-      experimentId: "titration-analysis",
+      equations: "2 KMnO4 + 5 H2C2O4 + 3 H2SO4 → K2SO4 + 2 MnSO4 + 10 CO2 + 8 H2O",
+      desc: "Standard self-indicating titration at 50-60°C to determine exact permanganate molarity.",
+      experimentId: "oxalic-acid-titration",
+    },
+    {
+      id: "mohrs-salt-titration",
+      title: "Mohr's Salt & KMnO4 Standardization Protocol",
+      subject: "Chemistry",
+      equations: "10 FeSO4 + 2 KMnO4 + 8 H2SO4 → 5 Fe2(SO4)3 + K2SO4 + 2 MnSO4 + 8 H2O",
+      desc: "Autocatalytic iron oxidation in acidic medium for permanganate standardization.",
+      experimentId: "mohrs-salt-titration",
     },
   ];
 

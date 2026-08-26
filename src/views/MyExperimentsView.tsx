@@ -52,7 +52,7 @@ export default function MyExperimentsView() {
     const isOhms = session.experimentId === "ohms-law";
     const headers = isOhms
       ? ["Reading #", "Voltage (V)", "Resistance (Ω)", "Current (mA)", "Power (mW)"]
-      : ["Reading #", "Titrant Added (mL)", "Analyte Vol (mL)", "Sensor pH"];
+      : ["Reading #", "Titrant Added (mL)", "Aliquot Vol (mL)", "Sensor pH"];
 
     const rows = session.observations.map((obs) =>
       isOhms
@@ -66,7 +66,7 @@ export default function MyExperimentsView() {
         : [
             obs.id,
             obs.inputs.volumeAdded ?? 0,
-            obs.inputs.analyteVolume ?? 25,
+            obs.inputs.aliquotVolume ?? 10,
             obs.outputs.ph ?? 7,
           ]
     );
@@ -340,7 +340,7 @@ export default function MyExperimentsView() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => openExperiment("titration-analysis")}
+                  onClick={() => openExperiment("oxalic-acid-titration")}
                   className="btn-secondary text-xs px-4 py-2 cursor-pointer"
                 >
                   Launch Titration Analysis

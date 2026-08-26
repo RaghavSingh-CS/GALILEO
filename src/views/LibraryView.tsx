@@ -39,13 +39,23 @@ export default function LibraryView() {
     },
     {
       id: "doc-2",
-      name: "Acid_Base_Titration_Phenolphthalein_Protocol.pdf",
+      name: "Oxalic_Acid_KMnO4_Standardization.pdf",
       subject: "Chemistry",
       type: "Protocol Guide",
-      modified: "2026-08-18",
-      size: "1.8 MB",
-      experimentId: "titration-analysis",
-      desc: "Standard 0.1M HCl vs NaOH neutralization procedure, equivalence point detection, and pH curve analysis.",
+      modified: "2026-08-26",
+      size: "2.1 MB",
+      experimentId: "oxalic-acid-titration",
+      desc: "Standardization of KMnO4 using 0.1M Oxalic Acid at 50-60°C. Self-indicating titration protocol.",
+    },
+    {
+      id: "doc-3",
+      name: "Mohrs_Salt_KMnO4_Standardization.pdf",
+      subject: "Chemistry",
+      type: "Protocol Guide",
+      modified: "2026-08-26",
+      size: "1.9 MB",
+      experimentId: "mohrs-salt-titration",
+      desc: "Method for determining KMnO4 concentration using 0.05M Mohr's Salt in acidic medium.",
     },
   ];
 

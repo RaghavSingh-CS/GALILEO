@@ -39,7 +39,6 @@ export default function Workspace() {
 
   const graphLineType = useSettingsStore((s) => s.graphLineType);
   const getSweepIntervalMs = useSettingsStore((s) => s.getSweepIntervalMs);
-  const liveCircuitPower = useExperimentStore((s) => s.liveCircuitPower);
   const liveCircuitCurrent = useExperimentStore((s) => s.liveCircuitCurrent);
   const sessionStatus = useExperimentStore((s) => s.sessionStatus);
   const setSessionStatus = useExperimentStore((s) => s.setSessionStatus);
@@ -194,15 +193,16 @@ export default function Workspace() {
     if (sessionStatus !== "running" || !entry) return;
     const intervalMs = getSweepIntervalMs();
 
-    if (entry.config.id === "titration-analysis") {
+    if (entry.config.id === "oxalic-acid-titration" || entry.config.id === "mohrs-salt-titration") {
+      const maxVolume = entry.config.apparatus.find((param) => param.id === "volumeAdded")?.max ?? 100;
       const interval = setInterval(() => {
         const currentVol = apparatusValues.volumeAdded ?? 0;
         const rate = apparatusValues.flowRate ?? 0.5;
-        if (currentVol >= 100) {
+        if (currentVol >= maxVolume) {
           setSessionStatus("complete");
           return;
         }
-        const nextVol = Math.min(100, Math.round((currentVol + rate * 2) * 10) / 10);
+        const nextVol = Math.min(maxVolume, Math.round((currentVol + rate * 2) * 10) / 10);
         setApparatusValue("volumeAdded", nextVol);
         const newVals = { ...apparatusValues, volumeAdded: nextVol };
         const outputs = entry.engine.compute(newVals, { noiseFraction });
@@ -229,7 +229,7 @@ export default function Workspace() {
       data = observations.map((obs, i) => ({
         index: i + 1,
         x: obs.inputs.volumeAdded ?? 0,
-        y: obs.outputs.ph ?? 7,
+        y: obs.outputs.colorIntensity ?? 0,
       }));
     }
     return data.sort((a, b) => a.x - b.x);
@@ -242,14 +242,14 @@ export default function Workspace() {
     if (activeExpId === "ohms-law") {
       return analyzeOhmsLaw(observations, apparatusValues.resistance ?? 100);
     } else {
-      const vAnalyte = apparatusValues.analyteVolume ?? 25;
-      const calculatedM = 0.1;
+      const vAnalyte = apparatusValues.aliquotVolume ?? 10;
+      const calculatedMURL = 0.02; // Roughly simulated KMnO4 molarity
       return {
-        label1: "Analyte Molarity",
-        val1: `${calculatedM.toFixed(3)} M NaOH`,
+        label1: "KMnO₄ Molarity",
+        val1: `${calculatedMURL.toFixed(4)} M`,
         label2: "Equivalence Vol",
-        val2: `${vAnalyte.toFixed(1)} mL HCl`,
-        summary: `Equivalence: ${vAnalyte.toFixed(1)} mL · Molarity: ${calculatedM.toFixed(3)} M NaOH`,
+        val2: `${(vAnalyte).toFixed(1)} mL`,
+        summary: `Equivalence: ${(vAnalyte).toFixed(1)} mL · Molarity: ${calculatedMURL.toFixed(4)} M KMnO₄`,
       };
     }
   }, [observations, apparatusValues, activeExpId]);
@@ -259,7 +259,7 @@ export default function Workspace() {
     const isCircuit = entry.config.subject === "physics";
     const headers = isCircuit
       ? "ID,Voltage(V),Resistance(Ohms),Current(mA),Power(mW)\n"
-      : "ID,Titrant(mL),pH,TotalVol(mL)\n";
+      : "ID,Titrant(mL),ColorIntensity,TotalVol(mL)\n";
 
     const rows = observations
       .map((obs) => {
@@ -269,8 +269,8 @@ export default function Workspace() {
           },${obs.outputs.current ?? 0},${obs.outputs.power ?? 0}`;
         }
         return `${obs.id},${obs.inputs.volumeAdded ?? 0},${
-          obs.outputs.ph ?? 7
-        },${obs.outputs.totalVol ?? 25}`;
+          obs.outputs.colorIntensity ?? 0
+        },${obs.outputs.totalVol ?? (obs.inputs.aliquotVolume ?? 10) + 5}`;
       })
       .join("\n");
 
@@ -363,9 +363,9 @@ export default function Workspace() {
 
   const titrantVol = apparatusValues.volumeAdded ?? 0;
   const stirrerRPM = apparatusValues.stirrerSpeed ?? 300;
-  const livePH = liveResult?.ph ?? 11.45;
-  const analyteVol = apparatusValues.analyteVolume ?? 25;
-  const isNearEquivalence = liveResult?.isNearEquivalence ?? (Math.abs(titrantVol - analyteVol) < 3.0);
+  const liveColorIntensity = liveResult?.colorIntensity ?? 0;
+  const analyteVol = apparatusValues.aliquotVolume ?? 10;
+  const isNearEquivalence = liveResult?.isNearEquivalence ?? false;
   const isNeutralized = liveResult?.isNeutralized ?? (titrantVol >= analyteVol);
 
   return (
@@ -639,15 +639,15 @@ export default function Workspace() {
                 <>
                   <div className="bg-[#131313] border border-[#333333] p-2.5 rounded">
                     <div className="font-label-caps text-[9px] text-[#c2c8c4] mb-1">
-                      SENSOR pH
+                      COLOR INTENSITY
                     </div>
                     <div className="font-data-mono text-base text-[#b5ccc1] font-semibold">
-                      {livePH.toFixed(2)}
+                      {(liveColorIntensity * 100).toFixed(1)}%
                     </div>
                   </div>
                   <div className="bg-[#131313] border border-[#333333] p-2.5 rounded">
                     <div className="font-label-caps text-[9px] text-[#c2c8c4] mb-1">
-                      TITRANT (HCl)
+                      TITRANT (KMnO₄)
                     </div>
                     <div className="font-data-mono text-base text-[#bdc9c8] font-semibold">
                       {titrantVol.toFixed(1)}
@@ -855,8 +855,8 @@ export default function Workspace() {
 
                   <div className="absolute top-2 right-2 bg-[#20201f]/90 border border-[#424845] rounded-lg p-3 flex flex-col gap-2 shadow-xl backdrop-blur-sm z-30">
                     <div>
-                      <span className="font-label-caps text-[9px] text-[#c2c8c4] block">SENSOR: pH LEVEL</span>
-                      <span className="font-data-mono text-xl text-[#b5ccc1] font-bold">{livePH.toFixed(2)}</span>
+                      <span className="font-label-caps text-[9px] text-[#c2c8c4] block">KMnO₄ COLOR</span>
+                      <span className="font-data-mono text-xl text-[#b5ccc1] font-bold">{(liveColorIntensity * 100).toFixed(1)}%</span>
                     </div>
                     <div className="h-px bg-[#424845]" />
                     <div>
@@ -1154,7 +1154,7 @@ export default function Workspace() {
           <div className="flex-1 p-3 flex flex-col bg-[#131313] min-h-[140px] overflow-hidden">
             <div className="flex justify-between items-center mb-1 shrink-0">
               <span className="font-label-caps text-[10px] text-[#c2c8c4]">
-                {isCircuit ? "V-I CHARACTERISTIC PLOT" : "pH NEUTRALIZATION CURVE"}
+                {isCircuit ? "V-I CHARACTERISTIC PLOT" : "COLOR INTENSITY CURVE"}
               </span>
               <span className="font-data-mono text-[9px] text-[#8da399]">
                 {graphLineType} line style
@@ -1181,9 +1181,9 @@ export default function Workspace() {
                   />
                   <YAxis
                     dataKey="y"
-                    name={isCircuit ? "Current (mA)" : "pH"}
+                    name={isCircuit ? "Current (mA)" : "Color"}
                     unit={isCircuit ? "mA" : ""}
-                    domain={isCircuit ? [0, "auto"] : [0, 14]}
+                    domain={isCircuit ? [0, "auto"] : [0, 1]}
                     stroke="#424845"
                     tick={{
                       fontSize: 10,

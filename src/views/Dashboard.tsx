@@ -76,7 +76,8 @@ export default function Dashboard() {
   const openNewExpModal = useNavigationStore((s) => s.openNewExpModal);
 
   const ohmsLaw = getExperiment("ohms-law");
-  const titration = getExperiment("titration-analysis");
+  const oxalicAcid = getExperiment("oxalic-acid-titration");
+  const mohrsSalt = getExperiment("mohrs-salt-titration");
 
   const handleStart = (id: string) => {
     const entry = getExperiment(id);
@@ -255,21 +256,33 @@ export default function Dashboard() {
               </h3>
               <div className="flex-1 h-px bg-[#424845]/50" />
               <span className="font-data-mono text-xs text-[#c2c8c4] bg-[#20201f] px-2.5 py-1 rounded border border-[#424845]/40">
-                01 MODULE
+                02 MODULES
               </span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <ExperimentCard
-                id="titration-analysis"
-                title={titration?.config.title || "Titration Analysis"}
+                id="oxalic-acid-titration"
+                title={oxalicAcid?.config.title || "Oxalic Acid Titration"}
                 subject="chemistry"
                 category="QUANTITATIVE"
                 icon="science"
                 description={
-                  titration?.config.description ||
-                  "Determine unknown base concentrations via simulated acid-base neutralizations with pH curve tracking."
+                  oxalicAcid?.config.description ||
+                  "Standardize a potassium permanganate solution by titrating it against a hot standard solution of oxalic acid."
                 }
-                onStart={() => handleStart("titration-analysis")}
+                onStart={() => handleStart("oxalic-acid-titration")}
+              />
+              <ExperimentCard
+                id="mohrs-salt-titration"
+                title={mohrsSalt?.config.title || "Mohr's Salt Titration"}
+                subject="chemistry"
+                category="QUANTITATIVE"
+                icon="biotech"
+                description={
+                  mohrsSalt?.config.description ||
+                  "Standardize a potassium permanganate solution by titrating it against a standard solution of Mohr's salt."
+                }
+                onStart={() => handleStart("mohrs-salt-titration")}
               />
             </div>
           </section>

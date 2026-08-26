@@ -34,12 +34,12 @@ describe('Experiment Store - Session Isolation', () => {
     expect(activeState.observations.length).toBe(1);
 
     // 3. Switch to Titration WITHOUT manually resetting
-    const titration = getExperiment('titration-analysis')!;
+    const titration = getExperiment('oxalic-acid-titration')!;
     const titrDefaults: Record<string, number> = {};
     titration.config.apparatus.forEach(p => titrDefaults[p.id] = p.default);
     
     // startSession is the unified launch action for fresh launches
-    useExperimentStore.getState().startSession('titration-analysis', titrDefaults);
+    useExperimentStore.getState().startSession('oxalic-acid-titration', titrDefaults);
 
     // 4. Confirm titration starts with empty apparatus/observations, not leftover Ohm data
     const finalState = useExperimentStore.getState();
@@ -48,7 +48,7 @@ describe('Experiment Store - Session Isolation', () => {
     expect(finalState.apparatusValues.voltage).toBeUndefined();
     
     // Titration defaults should exist
-    expect(finalState.apparatusValues.analyteVolume).toBe(25);
+    expect(finalState.apparatusValues.volumeAdded).toBe(0);
     
     // Observations should be completely cleared
     expect(finalState.observations.length).toBe(0);

@@ -265,7 +265,7 @@ export default function GalileoChat() {
     }
   };
 
-  const quickPrompts = experimentId === "titration-analysis" ? [
+  const quickPrompts = experimentId === "oxalic-acid-titration" || experimentId === "mohrs-salt-titration" ? [
     "Verify equivalence point calculation",
     "Explain the pH curve shape",
     "What is the indicator color transition?"
