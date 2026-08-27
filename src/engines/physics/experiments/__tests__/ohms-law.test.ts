@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { verifyOhmsLawExperiment } from '../ohms-law';
-import type { CircuitState, BatteryComponent, ResistorComponent, AmmeterComponent, VoltmeterComponent, Wire } from '../../circuits/types';
+import type { CircuitState, BatteryComponent, ResistorComponent, VariableResistorComponent, SwitchComponent, AmmeterComponent, VoltmeterComponent, Wire } from '../../circuits/types';
 
 describe('Ohm\'s Law Verifier', () => {
   const makeBattery = (id: string, voltage = 9): BatteryComponent => ({
@@ -28,6 +28,68 @@ describe('Ohm\'s Law Verifier', () => {
     expect(result.issues).toContain('MISSING_AMMETER');
     expect(result.issues).toContain('MISSING_VOLTMETER');
     expect(result.usability).toBe('unusable');
+  });
+
+  it('accepts a variable resistor as the single Ohm\'s Law load', () => {
+    const b1 = makeBattery('b1', 10);
+    const vr1: VariableResistorComponent = {
+      id: 'vr1',
+      type: 'variable_resistor',
+      minResistance: 1,
+      maxResistance: 1000,
+      currentResistance: 100,
+      terminals: [
+        { id: 'vr1:a', componentId: 'vr1', role: 'a' },
+        { id: 'vr1:b', componentId: 'vr1', role: 'b' },
+      ],
+    };
+    const a1 = makeAmmeter('a1');
+    const v1 = makeVoltmeter('v1');
+    const state: CircuitState = {
+      components: [b1, vr1, a1, v1],
+      wires: [
+        makeWire('w1', b1.terminals[0].id, a1.terminals[0].id),
+        makeWire('w2', a1.terminals[1].id, vr1.terminals[0].id),
+        makeWire('w3', vr1.terminals[1].id, b1.terminals[1].id),
+        makeWire('wv1', v1.terminals[0].id, vr1.terminals[0].id),
+        makeWire('wv2', v1.terminals[1].id, vr1.terminals[1].id),
+      ],
+    };
+
+    const result = verifyOhmsLawExperiment(state);
+    expect(result.usability).toBe('usable');
+    expect(result.issues).not.toContain('EXTRANEOUS_COMPONENTS');
+  });
+
+  it('accepts one closed switch in series with the required apparatus', () => {
+    const b1 = makeBattery('b1', 10);
+    const r1 = makeResistor('r1', 100);
+    const a1 = makeAmmeter('a1');
+    const v1 = makeVoltmeter('v1');
+    const s1: SwitchComponent = {
+      id: 's1',
+      type: 'switch',
+      closed: true,
+      terminals: [
+        { id: 's1:a', componentId: 's1', role: 'a' },
+        { id: 's1:b', componentId: 's1', role: 'b' },
+      ],
+    };
+    const state: CircuitState = {
+      components: [b1, r1, a1, v1, s1],
+      wires: [
+        makeWire('w1', b1.terminals[0].id, s1.terminals[0].id),
+        makeWire('w2', s1.terminals[1].id, a1.terminals[0].id),
+        makeWire('w3', a1.terminals[1].id, r1.terminals[0].id),
+        makeWire('w4', r1.terminals[1].id, b1.terminals[1].id),
+        makeWire('wv1', v1.terminals[0].id, r1.terminals[0].id),
+        makeWire('wv2', v1.terminals[1].id, r1.terminals[1].id),
+      ],
+    };
+
+    const result = verifyOhmsLawExperiment(state);
+    expect(result.usability).toBe('usable');
+    expect(result.issues).not.toContain('EXTRANEOUS_COMPONENTS');
   });
 
   it('accepts a perfectly formed Ohms Law circuit', () => {

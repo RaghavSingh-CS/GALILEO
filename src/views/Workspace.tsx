@@ -7,8 +7,14 @@ import { analyzeOhmsLaw } from "@/experiments/physics/ohmsLawAnalysis";
 import { CircuitSandbox } from '@/experiments/physics/components/CircuitSandbox';
 import { ValidationPanel } from '@/experiments/physics/components/ValidationPanel';
 import type { Node } from '@xyflow/react';
-import type { SimulationResult } from '@/engines/physics/circuits/types';
-import type { OhmsLawIssueCode, OhmsLawResult, SeriesParallelIssueCode, SeriesParallelResult, ExperimentUsability } from '@/engines/physics/experiments/types';
+import type {
+  ExperimentUsability,
+  OhmsLawIssueCode,
+  OhmsLawResult,
+  SeriesParallelIssueCode,
+  SeriesParallelResult,
+  SimulationResult,
+} from '@/engines/physics';
 import GalileoChat from "@/panels/GalileoChat";
 import { SaveExperimentModal } from "@/panels/Modals";
 import {
@@ -282,17 +288,18 @@ export default function Workspace() {
       };
     } else {
       if (observations.length < 1) return null;
+      const latest = observations[observations.length - 1];
       const vAnalyte = apparatusValues.aliquotVolume ?? 10;
-      const calculatedMURL = 0.02; // Roughly simulated KMnO4 molarity
+      const calculatedMolarity = 0.02;
       return {
         label1: "KMnO₄ Molarity",
-        val1: `${calculatedMURL.toFixed(4)} M`,
+        val1: `${calculatedMolarity.toFixed(4)} M`,
         label2: "Equivalence Vol",
-        val2: `${(vAnalyte).toFixed(1)} mL`,
-        summary: `Equivalence: ${(vAnalyte).toFixed(1)} mL · Molarity: ${calculatedMURL.toFixed(4)} M KMnO₄`,
+        val2: `${latest.inputs.volumeAdded?.toFixed(2) ?? "--"} mL`,
+        summary: `Titrated ${vAnalyte} mL analyte with KMnO₄. Calculated molarity: ${calculatedMolarity.toFixed(4)} M.`,
       };
     }
-  }, [observations, apparatusValues, activeExpId]);
+  }, [observations, activeExpId, apparatusValues]);
 
   const exportCSV = () => {
     if (observations.length === 0) return;
@@ -868,7 +875,15 @@ export default function Workspace() {
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-[#8da399] pulse-live" />
               <span className="font-label-caps text-[10px] text-[#8da399]">
-                {sessionStatus === "running" ? "SYSTEM ACTIVE" : sessionStatus === "invalid" ? "SYSTEM FAULT" : "SYSTEM READY"}
+                {sessionStatus === "running"
+                  ? "SYSTEM ACTIVE"
+                  : sessionStatus === "invalid"
+                    ? "SYSTEM FAULT"
+                    : isCircuit && sandboxUsability === "unusable"
+                      ? "SETUP REQUIRED"
+                      : isCircuit && sandboxUsability === "in-progress"
+                        ? "WIRING IN PROGRESS"
+                        : "SYSTEM READY"}
               </span>
             </div>
           </div>
@@ -883,7 +898,11 @@ export default function Workspace() {
                 <div className="relative w-full h-full bg-[#1c1b1b]/80 border border-[#424845] rounded-xl p-0 shadow-2xl backdrop-blur-sm z-10 overflow-hidden flex flex-col">
                   <div className="flex justify-between items-center border-b border-[#424845]/50 p-2 shrink-0 bg-[#20201f]">
                     <span className="font-label-caps text-[10px] text-[#c2c8c4]">
-                      DC CIRCUIT BENCH · CLOSED LOOP
+                      DC CIRCUIT BENCH · {sandboxUsability === "usable"
+                        ? "CLOSED LOOP"
+                        : sandboxUsability === "in-progress"
+                          ? "WIRING IN PROGRESS"
+                          : "SETUP REQUIRED"}
                     </span>
                     <span className="font-data-mono text-[10px] text-[#8da399]">
                       I = {liveCurrent.toFixed(2)} mA @ {currentVoltage}V
@@ -1128,12 +1147,12 @@ export default function Workspace() {
                     {activeExpId === 'ohms-law' && <th className="p-2 text-right">Resistance (Ω)</th>}
                     {!isCircuit && config.apparatus.map((app) => (
                       <th key={`input-${app.id}`} className="p-2 text-right">
-                        {app.label} ({app.unit})
+                        {app.label} <span className="normal-case">({app.unit})</span>
                       </th>
                     ))}
                     {entry.engine.outputColumns.map((col) => (
                       <th key={`output-${col.key}`} className="p-2 text-right">
-                        {col.label} {col.unit ? `(${col.unit})` : ''}
+                        {col.label} {col.unit ? <span className="normal-case">({col.unit})</span> : ''}
                       </th>
                     ))}
                   </tr>

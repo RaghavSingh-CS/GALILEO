@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { OhmsLawIssueCode, SeriesParallelIssueCode, ExperimentUsability } from '../../../engines/physics/experiments/types';
+import type { ExperimentUsability, OhmsLawIssueCode, SeriesParallelIssueCode } from '../../../engines/physics';
 
 interface ValidationPanelProps {
   issues: (OhmsLawIssueCode | SeriesParallelIssueCode)[];
@@ -13,7 +13,18 @@ function getIssueKey(issue: string) {
 function ValidationPanelContent({ issues, usability }: ValidationPanelProps) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
-  const activeIssues = issues.filter(i => !dismissed.has(getIssueKey(i)));
+  const hasMissingApparatus = issues.some(issue => issue.startsWith('MISSING_'));
+  const activeIssues = issues.filter(issue => {
+    if (dismissed.has(getIssueKey(issue))) return false;
+
+    // During initial assembly, the actionable missing-component prompts are
+    // clearer than generic solver/verifier summaries for the same state.
+    if (hasMissingApparatus && (issue === 'EXTRANEOUS_COMPONENTS' || issue === 'INVALID_CIRCUIT')) {
+      return false;
+    }
+
+    return true;
+  });
 
   const handleDismiss = (key: string) => {
     setDismissed(prev => {

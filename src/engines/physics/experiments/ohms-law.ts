@@ -5,11 +5,26 @@ import type { OhmsLawIssueCode, OhmsLawResult, ExperimentUsability } from './typ
 
 export function verifyOhmsLawExperiment(state: CircuitState): OhmsLawResult {
   const issues: OhmsLawIssueCode[] = [];
+  const result = solveCircuit(state);
+
+  // The verifier is part of the public adapter boundary, so malformed
+  // persisted/React Flow state must be contained just like solveCircuit.
+  // Do this before dereferencing state.components.
+  if (result.validation.some(message => message.ruleId === 'MALFORMED_INPUT')) {
+    return {
+      usability: 'unusable',
+      issues: ['INVALID_CIRCUIT'],
+      voltageReadingV: null,
+      currentReadingA: null,
+    };
+  }
   
   const batteries = state.components.filter(c => c.type === 'battery');
   const resistors = state.components.filter(c => c.type === 'resistor' || c.type === 'variable_resistor');
   const ammeters = state.components.filter(c => c.type === 'ammeter');
   const voltmeters = state.components.filter(c => c.type === 'voltmeter');
+  const switches = state.components.filter(c => c.type === 'switch');
+  const supportedComponentCount = batteries.length + resistors.length + ammeters.length + voltmeters.length + switches.length;
 
   if (batteries.length === 0) issues.push('MISSING_BATTERY');
   if (resistors.length === 0) issues.push('MISSING_RESISTOR');
@@ -21,20 +36,20 @@ export function verifyOhmsLawExperiment(state: CircuitState): OhmsLawResult {
     resistors.length !== 1 ||
     ammeters.length !== 1 ||
     voltmeters.length !== 1 ||
-    state.components.length > 4
+    switches.length > 1 ||
+    state.components.length !== supportedComponentCount
   ) {
     issues.push('EXTRANEOUS_COMPONENTS');
   }
 
-  // Only proceed with topology checks if the circuit has exactly the 4 required components.
+  // A single switch is valid optional apparatus; the load may be fixed or variable.
   const hasBasicComponents =
     batteries.length === 1 &&
     resistors.length === 1 &&
     ammeters.length === 1 &&
     voltmeters.length === 1 &&
-    state.components.length === 4;
-
-  const result = solveCircuit(state);
+    switches.length <= 1 &&
+    state.components.length === supportedComponentCount;
 
   // Check for critical solver issues (open circuit, short circuit, floating)
   const isShortCircuit = result.validation.some(v => v.ruleId === 'SHORT_CIRCUIT');
@@ -43,6 +58,9 @@ export function verifyOhmsLawExperiment(state: CircuitState): OhmsLawResult {
     v.ruleId === 'DISCONNECTED_COMPONENT' ||
     v.ruleId === 'FLOATING_TERMINAL' ||
     v.ruleId === 'DANGLING_WIRE'
+  );
+  const isTransientIncomplete = result.validation.some(v =>
+    v.ruleId === 'FLOATING_TERMINAL' || v.ruleId === 'DANGLING_WIRE'
   );
 
   if (isShortCircuit) issues.push('SHORT_CIRCUIT');
@@ -118,7 +136,13 @@ export function verifyOhmsLawExperiment(state: CircuitState): OhmsLawResult {
       voltageReadingV = voltmeterReading.value;
       currentReadingA = ammeterReadingObj.value;
     }
-  } else if (hasBasicComponents && issues.length === 0) {
+  } else if (
+    hasBasicComponents
+    && isNotClosed
+    && isTransientIncomplete
+    && !isShortCircuit
+    && !issues.includes('INVALID_CIRCUIT')
+  ) {
     usability = 'in-progress';
   }
   return {

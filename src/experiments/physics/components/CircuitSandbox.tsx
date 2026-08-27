@@ -21,20 +21,19 @@ import { VariableResistorNode } from './nodes/VariableResistorNode';
 import { SwitchNode } from './nodes/SwitchNode';
 import { Palette } from './Palette';
 import type { PaletteComponentType } from './Palette';
-import { buildCircuitState } from '../circuitAdapter';
+import { buildCircuitState, hasDuplicateConnection } from '../circuitAdapter';
 import { 
   solveCircuit, 
   verifyOhmsLawExperiment, 
-  verifySeriesParallelExperiment 
+  verifySeriesParallelExperiment,
+  type ComponentReading,
+  type ExperimentUsability,
+  type OhmsLawIssueCode,
+  type OhmsLawResult,
+  type SeriesParallelIssueCode,
+  type SeriesParallelResult,
+  type SimulationResult,
 } from '../../../engines/physics';
-import type { ComponentReading, SimulationResult } from '../../../engines/physics/circuits/types';
-import type { 
-  OhmsLawIssueCode, 
-  OhmsLawResult,
-  SeriesParallelIssueCode, 
-  SeriesParallelResult,
-  ExperimentUsability 
-} from '../../../engines/physics/experiments/types';
 
 const nodeTypes = {
   battery: BatteryNode,
@@ -185,11 +184,7 @@ function CircuitSandboxContent({ experimentType, onSimulationUpdate }: CircuitSa
     setEdges((eds) => {
       if (!connection.sourceHandle || !connection.targetHandle) return eds;
       if (connection.source === connection.target) return eds;
-      const duplicate = eds.some((edge) => (
-        (edge.sourceHandle === connection.sourceHandle && edge.targetHandle === connection.targetHandle)
-        || (edge.sourceHandle === connection.targetHandle && edge.targetHandle === connection.sourceHandle)
-      ));
-      if (duplicate) return eds;
+      if (hasDuplicateConnection(eds, connection)) return eds;
       const nextEdges = addEdge({ ...connection, type: 'step' }, eds);
       edgesRef.current = nextEdges;
       scheduleSimulation(nodesRef.current, nextEdges);

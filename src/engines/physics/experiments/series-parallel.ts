@@ -5,6 +5,20 @@ import type { SeriesParallelIssueCode, SeriesParallelResult, ExperimentUsability
 
 export function verifySeriesParallelExperiment(state: CircuitState): SeriesParallelResult {
   const issues: SeriesParallelIssueCode[] = [];
+  const result = solveCircuit(state);
+
+  // Keep the exported verifier non-throwing for malformed adapter/persisted
+  // payloads by honoring the core runtime-integrity boundary first.
+  if (result.validation.some(message => message.ruleId === 'MALFORMED_INPUT')) {
+    return {
+      usability: 'unusable',
+      configuration: 'unknown',
+      issues: ['INVALID_CIRCUIT'],
+      equivalentResistanceOhms: null,
+      totalVoltageV: null,
+      totalCurrentA: null,
+    };
+  }
   
   const batteries = state.components.filter(c => c.type === 'battery');
   const resistors = state.components.filter(c => c.type === 'resistor' || c.type === 'variable_resistor');
@@ -32,14 +46,15 @@ export function verifySeriesParallelExperiment(state: CircuitState): SeriesParal
     voltmeters.length === 1 &&
     state.components.length === resistors.length + 3;
 
-  const result = solveCircuit(state);
-
   const isShortCircuit = result.validation.some(v => v.ruleId === 'SHORT_CIRCUIT');
   const isNotClosed = result.validation.some(v => 
     v.ruleId === 'OPEN_CIRCUIT' || 
     v.ruleId === 'DISCONNECTED_COMPONENT' ||
     v.ruleId === 'FLOATING_TERMINAL' ||
     v.ruleId === 'DANGLING_WIRE'
+  );
+  const isTransientIncomplete = result.validation.some(v =>
+    v.ruleId === 'FLOATING_TERMINAL' || v.ruleId === 'DANGLING_WIRE'
   );
 
   if (isShortCircuit) issues.push('SHORT_CIRCUIT');
@@ -148,7 +163,13 @@ export function verifySeriesParallelExperiment(state: CircuitState): SeriesParal
     if (issues.length === 0) {
       usability = 'usable';
     }
-  } else if (hasBasicComponents && issues.length === 0) {
+  } else if (
+    hasBasicComponents
+    && isNotClosed
+    && isTransientIncomplete
+    && !isShortCircuit
+    && !issues.includes('INVALID_CIRCUIT')
+  ) {
     usability = 'in-progress';
   }
 

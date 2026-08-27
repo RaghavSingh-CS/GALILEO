@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { Node, Edge } from '@xyflow/react';
-import { translateToCircuitState, cleanStaleEdges } from './circuitAdapter';
-import { solveCircuit } from '@/engines/physics/circuits';
-import { validateIntegrity } from '@/engines/physics/circuits/integrity';
+import type { Connection, Edge, Node } from '@xyflow/react';
+import { cleanStaleEdges, hasDuplicateConnection, translateToCircuitState } from './circuitAdapter';
+import { solveCircuit, validateIntegrity } from '@/engines/physics';
 
 describe('Circuit Adapter', () => {
   it('translates a normal solve round-trip', () => {
@@ -81,5 +80,53 @@ describe('Circuit Adapter', () => {
     } else {
       expect(validation.some(v => v.severity === 'error')).toBe(true);
     }
+  });
+
+  it('rejects the same visual-terminal connection in either direction', () => {
+    const edges: Edge[] = [{
+      id: 'edge-1',
+      source: 'resistor-1',
+      sourceHandle: 'a',
+      target: 'resistor-2',
+      targetHandle: 'b',
+    }];
+    const reversed: Connection = {
+      source: 'resistor-2',
+      sourceHandle: 'b',
+      target: 'resistor-1',
+      targetHandle: 'a',
+    };
+
+    expect(hasDuplicateConnection(edges, reversed)).toBe(true);
+  });
+
+  it('allows reused handle names on different component pairs', () => {
+    const edges: Edge[] = [{
+      id: 'edge-1',
+      source: 'resistor-1',
+      sourceHandle: 'a',
+      target: 'resistor-2',
+      targetHandle: 'b',
+    }];
+    const distinctConnection: Connection = {
+      source: 'resistor-3',
+      sourceHandle: 'a',
+      target: 'resistor-4',
+      targetHandle: 'b',
+    };
+
+    expect(hasDuplicateConnection(edges, distinctConnection)).toBe(false);
+  });
+
+  it('ignores incomplete intermediate connections during duplicate checks', () => {
+    const edges: Edge[] = [];
+    const incompleteConnection: Connection = {
+      source: 'resistor-1',
+      sourceHandle: null,
+      target: 'resistor-2',
+      targetHandle: 'b',
+    };
+
+    expect(hasDuplicateConnection(edges, incompleteConnection)).toBe(false);
   });
 });

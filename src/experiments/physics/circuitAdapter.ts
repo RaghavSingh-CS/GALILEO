@@ -1,11 +1,11 @@
-import type { Edge, Node } from "@xyflow/react";
+import type { Connection, Edge, Node } from "@xyflow/react";
 import type {
   CircuitState, 
   Component, 
   Terminal,
   Wire,
   ValidationMessage 
-} from "@/engines/physics/circuits/types";
+} from "@/engines/physics";
 
 /**
  * Validates and maps a single React Flow node to a Physics Engine Component.
@@ -121,6 +121,30 @@ export const translateToCircuitState = buildCircuitState;
 export function cleanStaleEdges(edges: Edge[], deletedNodes: Node[]): Edge[] {
   const deletedIds = new Set(deletedNodes.map(n => n.id));
   return edges.filter(e => !deletedIds.has(e.source) && !deletedIds.has(e.target));
+}
+
+function visualEndpoint(nodeId: string, handleId: string): string {
+  return `${nodeId}\u0000${handleId}`;
+}
+
+/**
+ * Returns true only when an existing edge connects the same two visual
+ * terminals. Handle names alone are not globally unique in React Flow: every
+ * resistor legitimately has handles named `a` and `b`.
+ */
+export function hasDuplicateConnection(edges: Edge[], connection: Connection): boolean {
+  if (!connection.sourceHandle || !connection.targetHandle) return false;
+
+  const source = visualEndpoint(connection.source, connection.sourceHandle);
+  const target = visualEndpoint(connection.target, connection.targetHandle);
+
+  return edges.some(edge => {
+    if (!edge.sourceHandle || !edge.targetHandle) return false;
+    const edgeSource = visualEndpoint(edge.source, edge.sourceHandle);
+    const edgeTarget = visualEndpoint(edge.target, edge.targetHandle);
+    return (edgeSource === source && edgeTarget === target)
+      || (edgeSource === target && edgeTarget === source);
+  });
 }
 
 /**
