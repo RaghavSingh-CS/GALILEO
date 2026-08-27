@@ -28,6 +28,10 @@ The `Workspace` view is the core of the application, dynamically rendering diffe
 ### AI Integration
 The Express server acts as a proxy to the Gemini API (`@google/genai`). The frontend communicates with this proxy rather than exposing the API key directly in the browser. The `settings.ts` store controls how verbose or pedagogical the AI responses are.
 
+GALILEO receives experiment context with every chat request, including the active experiment, aim, apparatus settings, session status, validation warnings, and recent observations. The `Workspace` owns the `Take Reading` action. After a valid chemistry or physics reading is added to the Experiment Store, it increments `readingAnalysisKey`, which causes `GalileoChat` to request a concise analysis of the newest observation. Taking a reading also opens the chat panel through the Navigation Store so the analysis is immediately visible. The proxy includes session status and validation warnings in the model system prompt, allowing GALILEO to distinguish a plausible value from a reading captured with an invalid setup.
+
+AI responses are advisory and pedagogical only. Deterministic chemistry and physics engines remain the source of scientific truth; GALILEO does not calculate or override simulation results.
+
 ### Styling
 Tailwind CSS is used for all styling, providing a highly customizable and responsive design system. The application features a dark-themed, scientific aesthetic ("GALILEO Lab").
 
@@ -79,3 +83,7 @@ Tailwind CSS is used for all styling, providing a highly customizable and respon
   - **Verification:** The complete root suite passed (45 files, 731 tests), including the added verifier and frontend-adapter regressions; standalone Chemistry passed unchanged (14 files, 282 tests); typecheck and production build passed; lint completed with pre-existing warnings only.
   - **Remaining divergence:** Local React Flow state still differs from the documented Zustand bridge, and the Chemistry UI/engine molarity divergence remains deliberately out of scope for this checkpoint.
   - **Next step:** Decide circuit-state persistence ownership and saved-session compatibility before migrating local React Flow state or removing the legacy path.
+- **[2026-08-27]: Contextual Reading Analysis:** Connected the `Take Reading` workflow to GALILEO for both Chemistry and Physics.
+  - Each valid manual observation now triggers an automatic analysis request containing the latest values, apparatus settings, previous observations, session status, and validation warnings.
+  - Taking a reading opens the GALILEO panel automatically; message bubbles use a brief fade/slide transition for a smoother response flow.
+  - AI remains an explanatory layer and does not replace deterministic engine calculations or validation.
