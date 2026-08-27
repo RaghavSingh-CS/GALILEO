@@ -31,6 +31,8 @@ interface ExperimentSessionStore {
   // Observations log
   observations: Observation[];
   addObservation: (inputs: Record<string, number>, outputs: Record<string, number>) => void;
+  readingAnalysisKey: number;
+  requestReadingAnalysis: () => void;
   clearObservations: () => void;
 
   // Session lifecycle
@@ -55,6 +57,7 @@ export const useExperimentStore = create<ExperimentSessionStore>((set, get) => (
   liveCircuitCurrent: 0,
   apparatusValues: {},
   observations: [],
+  readingAnalysisKey: 0,
   activeExperimentId: '',
   sessionStatus: 'idle',
   chatContextKey: Date.now(),
@@ -168,6 +171,8 @@ export const useExperimentStore = create<ExperimentSessionStore>((set, get) => (
     }));
   },
 
+  requestReadingAnalysis: () => set((state) => ({ readingAnalysisKey: state.readingAnalysisKey + 1 })),
+
   clearObservations: () => set({ observations: [], observationCounter: 0 }),
 
   startSession: (experimentId, defaults) => {
@@ -177,6 +182,7 @@ export const useExperimentStore = create<ExperimentSessionStore>((set, get) => (
       chatContextKey: Date.now(),
       apparatusValues: { ...defaults },
       observations: [],
+      readingAnalysisKey: 0,
       observationCounter: 0,
       validationMessages: [],
       liveCircuitPower: 0,

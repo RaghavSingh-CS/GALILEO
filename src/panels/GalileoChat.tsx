@@ -144,6 +144,7 @@ export default function GalileoChat() {
   const experimentId = useNavigationStore((s) => s.activeExperimentId);
   const apparatusValues = useExperimentStore((s) => s.apparatusValues);
   const observations = useExperimentStore((s) => s.observations);
+  const readingAnalysisKey = useExperimentStore((s) => s.readingAnalysisKey);
   const chatContextKey = useExperimentStore((s) => s.chatContextKey);
   const sessionStatus = useExperimentStore((s) => s.sessionStatus);
   const validationMessages = useExperimentStore((s) => s.validationMessages);
@@ -181,6 +182,21 @@ export default function GalileoChat() {
     const timer = setTimeout(() => sendQueryRef.current(reportPrompt), 800);
     return () => clearTimeout(timer);
   }, [sessionStatus, entry, chatContextKey]);
+
+  // Analyze each manually captured reading with the current experiment context.
+  useEffect(() => {
+    if (!entry || readingAnalysisKey === 0 || observations.length === 0) return;
+
+    const latest = observations[observations.length - 1];
+    const analysisPrompt = `Analyze the latest reading from the ${entry.config.title} experiment.\n` +
+      `Latest reading: ${JSON.stringify({ inputs: latest.inputs, outputs: latest.outputs })}\n` +
+      `Tell the student clearly whether the values look correct and consistent with the experiment's theory. ` +
+      `Use the apparatus settings, validation state, and previous readings in your context. Mention the expected relationship or calculation, ` +
+      `allow for the configured experimental noise, and identify any likely setup or measurement issue. Keep the response brief and actionable.`;
+
+    const timer = setTimeout(() => sendQueryRef.current(analysisPrompt), 250);
+    return () => clearTimeout(timer);
+  }, [readingAnalysisKey, observations, entry]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -333,7 +349,7 @@ export default function GalileoChat() {
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex flex-col ${
+            className={`flex flex-col animate-in fade-in slide-in-from-bottom-1 duration-300 ${
               msg.role === "user" ? "items-end" : "items-start"
             } gap-1`}
           >
@@ -371,8 +387,8 @@ export default function GalileoChat() {
             <div
               className={`text-xs md:text-sm font-body-md rounded-lg p-3 leading-relaxed shadow-sm min-w-0 break-words ${
                 msg.role === "user"
-                  ? "bg-[#1a1a1a] border border-[#333333] rounded-tr-none text-[#e5e2e1] max-w-[90%]"
-                  : "bg-[#2a2a2a] border border-[#333333] rounded-tl-none text-[#e5e2e1] max-w-[96%]"
+                    ? "bg-[#1a1a1a] border border-[#333333] rounded-tr-none text-[#e5e2e1] max-w-[90%] transition-colors duration-200"
+                    : "bg-[#2a2a2a] border border-[#333333] rounded-tl-none text-[#e5e2e1] max-w-[96%] transition-colors duration-200"
               }`}
             >
               {formatChatMessageContent(msg.content)}

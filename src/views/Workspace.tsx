@@ -36,12 +36,14 @@ export default function Workspace() {
   const goToSettings = useNavigationStore((s) => s.goToSettings);
   const galileoPanelOpen = useNavigationStore((s) => s.galileoPanelOpen);
   const toggleGalileoPanel = useNavigationStore((s) => s.toggleGalileoPanel);
+  const setGalileoPanel = useNavigationStore((s) => s.setGalileoPanel);
 
   const apparatusValues = useExperimentStore((s) => s.apparatusValues);
   const setApparatusValue = useExperimentStore((s) => s.setApparatusValue);
   const initApparatus = useExperimentStore((s) => s.initApparatus);
   const observations = useExperimentStore((s) => s.observations);
   const addObservation = useExperimentStore((s) => s.addObservation);
+  const requestReadingAnalysis = useExperimentStore((s) => s.requestReadingAnalysis);
   const startSession = useExperimentStore((s) => s.startSession);
 
   const graphLineType = useSettingsStore((s) => s.graphLineType);
@@ -157,6 +159,7 @@ export default function Workspace() {
 
   const handleTakeReading = () => {
     if (!entry) return;
+    setGalileoPanel(true);
 
     if (isCircuit) {
       if (!effectiveAmmeterId || !effectiveVoltmeterId || !sandboxSimResult || sandboxUsability !== 'usable') return;
@@ -174,16 +177,19 @@ export default function Workspace() {
             resistance: sandboxExperimentResult.equivalentResistanceOhms ?? voltageV / currentA,
           },
         );
+        requestReadingAnalysis();
       } else {
         const resistanceOhms = voltageV / currentA;
         addObservation(
           { voltage: voltageV, resistance: resistanceOhms },
           { current: currentA * 1000, power: voltageV * currentA * 1000 },
         );
+        requestReadingAnalysis();
       }
     } else {
       if (!liveResult) return;
       addObservation(apparatusValues, liveResult);
+      requestReadingAnalysis();
     }
   };
 

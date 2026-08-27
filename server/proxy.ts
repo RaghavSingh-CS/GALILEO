@@ -81,6 +81,8 @@ function buildSystemPrompt(
     experimentId?: string;
     experimentTitle?: string;
     aim?: string;
+    sessionStatus?: string;
+    validationMessages?: string[];
     apparatusValues?: Record<string, number>;
     observations?: Array<{
       inputs: Record<string, number>;
@@ -104,6 +106,12 @@ function buildSystemPrompt(
     prompt += `\n\nCurrent experiment: ${context.experimentTitle || context.experimentId}`;
     if (context.aim) {
       prompt += `\nAim: ${context.aim}`;
+    }
+    if (context.sessionStatus) {
+      prompt += `\nSession status: ${context.sessionStatus}`;
+    }
+    if (context.validationMessages && context.validationMessages.length > 0) {
+      prompt += `\nSetup or validation warnings: ${JSON.stringify(context.validationMessages)}`;
     }
     if (context.apparatusValues) {
       prompt += `\nCurrent apparatus settings: ${JSON.stringify(context.apparatusValues)}`;
