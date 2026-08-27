@@ -1,0 +1,9 @@
+{
+  "redirects": [
+    {
+      "source": "/demo",
+      "destination": "https://www.youtube.com/watch?v=FwFjD04LTIQ",
+      "permanent": false
+    }
+  ]
+}
