@@ -1,0 +1,352 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Space Grotesk", sans-serif;
+  --font-headline: "Space Grotesk", sans-serif;
+  --font-sans: "IBM Plex Sans", sans-serif;
+  --font-body: "IBM Plex Sans", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --font-label: "JetBrains Mono", monospace;
+  --font-data: "JetBrains Mono", monospace;
+
+  /* Stitch Galileo Lab Theme Colors */
+  --color-background: #131313;
+  --color-surface: #131313;
+  --color-surface-dim: #131313;
+  --color-surface-bright: #393939;
+  --color-surface-container-lowest: #0e0e0e;
+  --color-surface-container-low: #1c1b1b;
+  --color-surface-container: #20201f;
+  --color-surface-container-high: #2a2a2a;
+  --color-surface-container-highest: #353535;
+  --color-surface-variant: #353535;
+  
+  --color-on-surface: #e5e2e1;
+  --color-on-surface-variant: #c2c8c4;
+  --color-inverse-surface: #e5e2e1;
+  --color-inverse-on-surface: #313030;
+  
+  --color-outline: #8c928e;
+  --color-outline-variant: #424845;
+  --color-surface-tint: #b5ccc1;
+
+  --color-primary: #b5ccc1;
+  --color-on-primary: #21342d;
+  --color-primary-container: #8da399;
+  --color-on-primary-container: #263932;
+  --color-primary-fixed: #d1e8dd;
+  --color-primary-fixed-dim: #b5ccc1;
+  --color-inverse-primary: #4e635a;
+
+  --color-secondary: #bdc9c8;
+  --color-on-secondary: #283232;
+  --color-secondary-container: #404b4b;
+  --color-on-secondary-container: #afbbba;
+  --color-secondary-fixed: #d9e5e4;
+  --color-secondary-fixed-dim: #bdc9c8;
+
+  --color-tertiary: #e4beba;
+  --color-on-tertiary: #422a28;
+  --color-tertiary-container: #b99693;
+  --color-on-tertiary-container: #482f2d;
+  --color-tertiary-fixed: #ffdad7;
+  --color-tertiary-fixed-dim: #e4beba;
+
+  --color-error: #ffb4ab;
+  --color-on-error: #690005;
+  --color-error-container: #93000a;
+  --color-on-error-container: #ffdad6;
+
+  /* Spacing Tokens */
+  --spacing-gutter: 16px;
+  --spacing-unit: 4px;
+  --spacing-margin-desktop: 32px;
+  --spacing-margin-mobile: 16px;
+  --spacing-panel-gap: 12px;
+}
+
+/* ── Global Styles ── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-on-surface);
+  background-color: var(--color-background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  overflow: hidden;
+  background-color: #131313;
+  color: #e5e2e1;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  width: 100%;
+}
+
+/* ── Material Symbols icon styling ── */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  vertical-align: middle;
+}
+
+/* ── Typography Utility Classes ── */
+.font-headline-lg {
+  font-family: var(--font-display);
+  font-size: 32px;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+.font-headline-md {
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1.3;
+  font-weight: 500;
+}
+
+.font-headline-sm {
+  font-family: var(--font-display);
+  font-size: 18px;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+.font-body-lg {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  font-weight: 400;
+}
+
+.font-body-md {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  font-weight: 400;
+}
+
+.font-data-mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  font-weight: 400;
+}
+
+.font-label-caps {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* ── Scientific Instrument Panels & Borders ── */
+.panel-border {
+  border: 1px solid #333333;
+}
+
+.active-panel-border {
+  border: 1px solid #8da399;
+}
+
+.panel-hdr {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-on-surface-variant);
+  padding: 8px 12px;
+  border-bottom: 1px solid #333333;
+  user-select: none;
+  background: var(--color-surface-container-low);
+}
+
+/* ── Custom Readout display ── */
+.readout {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--color-primary);
+  background: #0e0e0e;
+  border: 1px solid #333333;
+  border-radius: 4px;
+  padding: 4px 10px;
+  text-align: right;
+}
+
+.readout-unit {
+  font-size: 11px;
+  color: var(--color-on-surface-variant);
+  margin-left: 4px;
+}
+
+/* ── Custom Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #131313;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #353535;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #424845;
+}
+
+/* ── Scientific Range Slider Styling ── */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  background: transparent;
+  outline: none;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 4px;
+  cursor: pointer;
+  background: #353535;
+  border-radius: 2px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 16px;
+  width: 8px;
+  border-radius: 2px;
+  background: #8da399;
+  cursor: pointer;
+  margin-top: -6px;
+  transition: transform 0.1s, background-color 0.1s;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  background: #b5ccc1;
+  transform: scaleY(1.2);
+}
+
+input[type="range"]::-moz-range-track {
+  width: 100%;
+  height: 4px;
+  cursor: pointer;
+  background: #353535;
+  border-radius: 2px;
+}
+
+input[type="range"]::-moz-range-thumb {
+  height: 16px;
+  width: 8px;
+  border-radius: 2px;
+  background: #8da399;
+  border: none;
+  cursor: pointer;
+}
+
+/* ── Action Buttons ── */
+.btn-primary {
+  background-color: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 8px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--color-primary-container);
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.btn-secondary {
+  background-color: transparent;
+  color: var(--color-on-surface);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 8px 16px;
+  border-radius: 4px;
+  border: 1px solid #424845;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--color-primary-container);
+  color: var(--color-primary);
+  background-color: rgba(141, 163, 153, 0.05);
+}
+
+/* ── Pulse Animations ── */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(141, 163, 153, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(141, 163, 153, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(141, 163, 153, 0);
+  }
+}
+
+.pulse-live {
+  animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
