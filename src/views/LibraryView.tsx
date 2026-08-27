@@ -29,41 +29,37 @@ export default function LibraryView() {
   const documents = [
     {
       id: "doc-1",
-      name: "Ohms_Law_Circuit_Fundamentals_Manual.pdf",
+      name: "Ohm's Law Circuit Fundamentals",
       subject: "Physics",
       type: "Lab Manual",
-      modified: "2026-08-20",
-      size: "2.4 MB",
+      size: "Experiment card",
       experimentId: "ohms-law",
       desc: "Complete guide to DC circuits, voltage-current linear relationships, and resistor calibration.",
     },
     {
       id: "doc-2",
-      name: "Series_Parallel_Resistance_Lab_Manual.pdf",
+      name: "Series & Parallel Resistance",
       subject: "Physics",
       type: "Lab Manual",
-      modified: "2026-08-27",
-      size: "2.0 MB",
+      size: "Experiment card",
       experimentId: "series-parallel",
       desc: "Build series and parallel resistor networks and verify their equivalent resistance using circuit meters.",
     },
     {
       id: "doc-3",
-      name: "Oxalic_Acid_KMnO4_Standardization.pdf",
+      name: "Oxalic Acid–KMnO₄ Standardization",
       subject: "Chemistry",
       type: "Protocol Guide",
-      modified: "2026-08-26",
-      size: "2.1 MB",
+      size: "Experiment card",
       experimentId: "oxalic-acid-titration",
       desc: "Standardization of KMnO4 using 0.1M Oxalic Acid at 50-60°C. Self-indicating titration protocol.",
     },
     {
       id: "doc-4",
-      name: "Mohrs_Salt_KMnO4_Standardization.pdf",
+      name: "Mohr's Salt–KMnO₄ Standardization",
       subject: "Chemistry",
       type: "Protocol Guide",
-      modified: "2026-08-26",
-      size: "1.9 MB",
+      size: "Experiment card",
       experimentId: "mohrs-salt-titration",
       desc: "Method for determining KMnO4 concentration using 0.05M Mohr's Salt in acidic medium.",
     },
@@ -160,7 +156,7 @@ export default function LibraryView() {
         <div className="mt-auto border-t border-[#424845]/50 pt-4 space-y-1">
           <div className="px-3 py-2 text-xs font-data-mono text-[#8c928e] flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#8da399]" />
-            Library Vault · Online
+            4 Local Experiment Cards
           </div>
         </div>
       </nav>
@@ -170,10 +166,10 @@ export default function LibraryView() {
         <div className="max-w-6xl mx-auto w-full">
           <div className="mb-8">
             <h2 className="font-headline-lg text-3xl font-semibold text-[#e5e2e1]">
-              Laboratory Library & Manuals
+              Experiment Reference Library
             </h2>
             <p className="font-body-md text-sm text-[#c2c8c4] mt-1">
-              Scientific reference manuals, experiment procedures, and equipment guidelines.
+              Prototype experiment cards with procedures and direct links to the four supported labs.
             </p>
           </div>
 
@@ -217,10 +213,10 @@ export default function LibraryView() {
           {/* Documents Table */}
           <div className="bg-[#1c1b1b] border border-[#424845] rounded-xl overflow-hidden shadow-sm">
             <div className="grid grid-cols-[1fr_140px_140px_100px_120px] gap-4 px-6 py-3 border-b border-[#424845] text-[#c2c8c4] font-label-caps text-[11px] bg-[#20201f]">
-              <div>Document Title</div>
+              <div>Reference Card</div>
               <div>Subject</div>
               <div>Type</div>
-              <div>Size</div>
+              <div>Format</div>
               <div className="text-right">Action</div>
             </div>
 

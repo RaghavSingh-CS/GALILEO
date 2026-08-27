@@ -14,7 +14,7 @@ export const mohrsSaltConfig: ExperimentConfig = {
       unit: "mL",
       min: 0,
       max: 50,
-      step: 0.5,
+      step: 0.05,
       default: 0,
     },
     {
@@ -39,9 +39,9 @@ export const mohrsSaltConfig: ExperimentConfig = {
       id: "aliquotVolume",
       label: "Mohr's Salt Aliquot Vol",
       unit: "mL",
-      min: 5,
-      max: 25,
-      step: 5,
+      min: 10,
+      max: 10,
+      step: 1,
       default: 10,
     }
   ],

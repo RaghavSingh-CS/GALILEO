@@ -126,7 +126,7 @@ const INITIAL_MESSAGE: ChatMessage = {
   id: 0,
   role: "galileo",
   content:
-    "Hello! I am GALILEO, your virtual laboratory AI assistant. I am connected to your live telemetry stream. You can ask questions about the current apparatus setup, theoretical equations, or request real-time data analysis.",
+    "Hello! I am GALILEO, your virtual laboratory AI assistant. I can use the current experiment context and recorded readings when the AI service is available.",
   timestamp: 0,
 };
 
@@ -135,6 +135,7 @@ export default function GalileoChat() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false); // Default to uncrowded, with easy toggle
+  const [connectionStatus, setConnectionStatus] = useState<"checking" | "connected" | "disconnected">("checking");
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const idCounter = useRef(1);
@@ -152,6 +153,15 @@ export default function GalileoChat() {
   const entry = experimentId ? getExperiment(experimentId) : undefined;
 
   useEffect(() => {
+    let active = true;
+    fetch("/api/galileo/health")
+      .then(response => response.ok ? response.json() : Promise.reject(new Error("Proxy unavailable")))
+      .then(data => { if (active) setConnectionStatus(data.status === "connected" ? "connected" : "disconnected"); })
+      .catch(() => { if (active) setConnectionStatus("disconnected"); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     setMessages([INITIAL_MESSAGE]);
     setInput("");
     // Reset report guard when a new session starts
@@ -160,7 +170,7 @@ export default function GalileoChat() {
 
   // ── Auto-briefing: fires when a new experiment session starts ──
   useEffect(() => {
-    if (!entry || !chatContextKey || chatContextKey === autoBriefingSent.current) return;
+    if (connectionStatus !== "connected" || !entry || !chatContextKey || chatContextKey === autoBriefingSent.current) return;
     autoBriefingSent.current = chatContextKey;
 
     const title = entry.config.title;
@@ -169,11 +179,11 @@ export default function GalileoChat() {
     // Small delay to let the chat UI reset first
     const timer = setTimeout(() => sendQueryRef.current(briefingPrompt), 600);
     return () => clearTimeout(timer);
-  }, [chatContextKey, entry]);
+  }, [chatContextKey, connectionStatus, entry]);
 
   // ── Auto-report: fires when experiment completes ──
   useEffect(() => {
-    if (sessionStatus !== "complete" || !entry) return;
+    if (connectionStatus !== "connected" || sessionStatus !== "complete" || !entry) return;
     if (autoReportSent.current === chatContextKey) return;
     autoReportSent.current = chatContextKey;
 
@@ -181,11 +191,11 @@ export default function GalileoChat() {
 
     const timer = setTimeout(() => sendQueryRef.current(reportPrompt), 800);
     return () => clearTimeout(timer);
-  }, [sessionStatus, entry, chatContextKey]);
+  }, [sessionStatus, entry, chatContextKey, connectionStatus]);
 
   // Analyze each manually captured reading with the current experiment context.
   useEffect(() => {
-    if (!entry || readingAnalysisKey === 0 || observations.length === 0) return;
+    if (connectionStatus !== "connected" || !entry || readingAnalysisKey === 0 || observations.length === 0) return;
 
     const latest = observations[observations.length - 1];
     const analysisPrompt = `Analyze the latest reading from the ${entry.config.title} experiment.\n` +
@@ -196,7 +206,7 @@ export default function GalileoChat() {
 
     const timer = setTimeout(() => sendQueryRef.current(analysisPrompt), 250);
     return () => clearTimeout(timer);
-  }, [readingAnalysisKey, observations, entry]);
+  }, [readingAnalysisKey, observations, entry, connectionStatus]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -212,7 +222,7 @@ export default function GalileoChat() {
 
   const sendQuery = async (queryText: string) => {
     const trimmed = queryText.trim();
-    if (!trimmed || isLoading) return;
+    if (!trimmed || isLoading || connectionStatus !== "connected") return;
 
     const userMsg: ChatMessage = {
       id: ++idCounter.current,
@@ -226,12 +236,16 @@ export default function GalileoChat() {
     setIsLoading(true);
 
     try {
+      const scientificResult = entry?.config.subject === "chemistry"
+        ? entry.engine.compute(apparatusValues)
+        : undefined;
       const context = {
         experimentId: experimentId || "ohms-law",
         experimentTitle: entry?.config.title || "Ohm's Law",
         aim: entry?.config.aim,
         sessionStatus,
-        validationMessages,
+        validationMessages: scientificResult?.issueCodes ?? validationMessages,
+        scientificResult,
         apparatusValues,
         observations: observations.map((obs) => ({
           inputs: obs.inputs,
@@ -247,6 +261,10 @@ export default function GalileoChat() {
       });
 
       const data = await res.json();
+      if (!res.ok) {
+        setConnectionStatus("disconnected");
+        throw new Error(data.reply || `GALILEO service returned ${res.status}`);
+      }
 
       const galileoMsg: ChatMessage = {
         id: ++idCounter.current,
@@ -257,6 +275,7 @@ export default function GalileoChat() {
 
       setMessages((prev) => [...prev, galileoMsg]);
     } catch (err) {
+      setConnectionStatus("disconnected");
       const errorMsg: ChatMessage = {
         id: ++idCounter.current,
         role: "galileo",
@@ -281,10 +300,14 @@ export default function GalileoChat() {
     }
   };
 
-  const quickPrompts = experimentId === "oxalic-acid-titration" || experimentId === "mohrs-salt-titration" ? [
+  const quickPrompts = experimentId === "oxalic-acid-titration" ? [
     "Verify equivalence point calculation",
-    "Explain the pH curve shape",
+    "Why must the flask stay between 50 and 60 °C?",
     "What is the indicator color transition?"
+  ] : experimentId === "mohrs-salt-titration" ? [
+    "Verify equivalence point calculation",
+    "Why is sulfuric acid required?",
+    "How does the permanganate endpoint appear?"
   ] : experimentId === "series-parallel" ? [
     "Verify Kirchhoff's laws",
     "Calculate equivalent resistance",
@@ -337,8 +360,10 @@ export default function GalileoChat() {
           </button>
 
           <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#131313] border border-[#424845]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#8da399] animate-pulse" />
-            <span className="font-label-caps text-[9px] text-[#8da399]">LIVE</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${connectionStatus === "connected" ? "bg-[#8da399] animate-pulse" : connectionStatus === "checking" ? "bg-amber-400" : "bg-red-400"}`} />
+            <span className={`font-label-caps text-[9px] ${connectionStatus === "connected" ? "text-[#8da399]" : "text-[#c2c8c4]"}`}>
+              {connectionStatus === "connected" ? "AVAILABLE" : connectionStatus === "checking" ? "CHECKING" : "UNAVAILABLE"}
+            </span>
           </div>
         </div>
       </div>
@@ -437,7 +462,7 @@ export default function GalileoChat() {
                 key={idx}
                 type="button"
                 onClick={() => sendQuery(prompt)}
-                disabled={isLoading}
+                disabled={isLoading || connectionStatus !== "connected"}
                 className="w-full text-left text-[11px] font-label-caps bg-[#262626] hover:bg-[#353535] border border-[#333333] hover:border-[#8da399]/40 rounded-lg p-2 text-[#c2c8c4] hover:text-[#e5e2e1] transition-all flex items-start gap-2 cursor-pointer disabled:opacity-50 min-w-0 group"
               >
                 <span className="material-symbols-outlined text-[14px] text-[#8da399] shrink-0 mt-0.5 group-hover:scale-110 transition-transform">
@@ -462,14 +487,14 @@ export default function GalileoChat() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isLoading}
-            placeholder="Ask a question about this experiment..."
+            disabled={isLoading || connectionStatus !== "connected"}
+            placeholder={connectionStatus === "disconnected" ? "AI service unavailable" : "Ask a question about this experiment..."}
             className="w-full bg-[#131313] border border-[#333333] rounded text-sm text-[#e5e2e1] font-body-md p-2.5 pr-10 resize-none focus:outline-none focus:border-[#8da399] transition-colors placeholder:text-[#c2c8c4]/40"
           />
           <button
             type="button"
             onClick={() => sendQuery(input)}
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || connectionStatus !== "connected" || !input.trim()}
             className="absolute bottom-2.5 right-2.5 text-[#c2c8c4] hover:text-[#8da399] transition-colors p-1.5 bg-[#353535] hover:bg-[#424845] rounded flex items-center justify-center cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <span className="material-symbols-outlined text-[16px]">send</span>

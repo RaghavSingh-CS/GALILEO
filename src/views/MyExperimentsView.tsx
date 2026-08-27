@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigationStore } from "@/stores/navigation";
 import { useHistoryStore, type ConductedExperimentSession } from "@/stores/history";
 import { useExperimentStore } from "@/stores/experiment";
+import { downloadExperimentCsv } from "@/experiments/exportCsv";
 
 export default function MyExperimentsView() {
   const goToDashboard = useNavigationStore((s) => s.goToDashboard);
@@ -42,45 +43,14 @@ export default function MyExperimentsView() {
 
   const handleResumeSession = (session: ConductedExperimentSession) => {
     // Pre-populate experiment store with this session's readings and apparatus settings
-    loadSession(session.experimentId, session.apparatusValues, session.observations, session.notes || "");
+    loadSession(session.experimentId, session.apparatusValues, session.observations, session.notes || "", session.circuit);
     // Open the workspace with this experiment ID
     openExperiment(session.experimentId);
   };
 
   const handleExportCSV = (session: ConductedExperimentSession) => {
     if (session.observations.length === 0) return;
-    const isOhms = session.experimentId === "ohms-law";
-    const headers = isOhms
-      ? ["Reading #", "Voltage (V)", "Resistance (Ω)", "Current (mA)", "Power (mW)"]
-      : ["Reading #", "Titrant Added (mL)", "Aliquot Vol (mL)", "Sensor pH"];
-
-    const rows = session.observations.map((obs) =>
-      isOhms
-        ? [
-            obs.id,
-            obs.inputs.voltage ?? 0,
-            obs.inputs.resistance ?? 0,
-            obs.outputs.current ?? 0,
-            obs.outputs.power ?? 0,
-          ]
-        : [
-            obs.id,
-            obs.inputs.volumeAdded ?? 0,
-            obs.inputs.aliquotVolume ?? 10,
-            obs.outputs.ph ?? 7,
-          ]
-    );
-
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `galileo_${session.id}_export.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadExperimentCsv(session.experimentId, session.observations, `galileo_${session.id}_export.csv`);
   };
 
   return (

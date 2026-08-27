@@ -4,9 +4,12 @@ import { useExperimentStore } from "@/stores/experiment";
 import { useSettingsStore } from "@/stores/settings";
 import { getExperiment, getAllExperiments } from "@/experiments/registry";
 import { analyzeOhmsLaw } from "@/experiments/physics/ohmsLawAnalysis";
+import { buildOhmsLawObservation, buildSeriesParallelObservation } from "@/experiments/physics/observationBuilders";
+import { downloadExperimentCsv } from "@/experiments/exportCsv";
+import { nextTitrationSweepVolume, shouldStopTitrationSweep } from "@/experiments/chemistry/sweep";
 import { CircuitSandbox } from '@/experiments/physics/components/CircuitSandbox';
 import { ValidationPanel } from '@/experiments/physics/components/ValidationPanel';
-import type { Node } from '@xyflow/react';
+import type { Edge, Node } from '@xyflow/react';
 import type {
   ExperimentUsability,
   OhmsLawIssueCode,
@@ -45,6 +48,9 @@ export default function Workspace() {
   const addObservation = useExperimentStore((s) => s.addObservation);
   const requestReadingAnalysis = useExperimentStore((s) => s.requestReadingAnalysis);
   const startSession = useExperimentStore((s) => s.startSession);
+  const persistedCircuitNodes = useExperimentStore((s) => s.nodes);
+  const persistedCircuitEdges = useExperimentStore((s) => s.edges);
+  const setCircuitGraph = useExperimentStore((s) => s.setCircuitGraph);
 
   const graphLineType = useSettingsStore((s) => s.graphLineType);
   const getSweepIntervalMs = useSettingsStore((s) => s.getSweepIntervalMs);
@@ -53,7 +59,6 @@ export default function Workspace() {
   const chatContextKey = useExperimentStore((s) => s.chatContextKey);
   const notes = useExperimentStore((s) => s.notes);
   const setNotes = useExperimentStore((s) => s.setNotes);
-  const validationMessages = useExperimentStore((s) => s.validationMessages);
   const [activeTab, setActiveTab] = useState<"schematic" | "procedure">("schematic");
   const [saveSuccessToast, setSaveSuccessToast] = useState(false);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
@@ -63,7 +68,8 @@ export default function Workspace() {
   const [apparatusWidth, setApparatusWidth] = useState(280);
   const [obsWidth, setObsWidth] = useState(360);
   // Sandbox state synced from CircuitSandbox
-  const [sandboxNodes, setSandboxNodes] = useState<Node[]>([]);
+  const [sandboxNodes, setSandboxNodes] = useState<Node[]>(persistedCircuitNodes);
+  const [sandboxEdges, setSandboxEdges] = useState<Edge[]>(persistedCircuitEdges);
   const [sandboxSimResult, setSandboxSimResult] = useState<SimulationResult | null>(null);
   const [sandboxIssues, setSandboxIssues] = useState<(OhmsLawIssueCode | SeriesParallelIssueCode)[]>(
     activeExpId === 'series-parallel'
@@ -168,22 +174,12 @@ export default function Workspace() {
       if (!Number.isFinite(voltageV) || !Number.isFinite(currentA) || currentA <= 0) return;
 
       if (activeExpId === 'series-parallel' && sandboxExperimentResult && 'configuration' in sandboxExperimentResult) {
-        addObservation(
-          { voltage: voltageV },
-          {
-            configuration: sandboxExperimentResult.configuration === 'series' ? 1 : 2,
-            voltage: sandboxExperimentResult.totalVoltageV ?? voltageV,
-            current: (sandboxExperimentResult.totalCurrentA ?? currentA) * 1000,
-            resistance: sandboxExperimentResult.equivalentResistanceOhms ?? voltageV / currentA,
-          },
-        );
+        const observation = buildSeriesParallelObservation(sandboxExperimentResult, voltageV, currentA, sandboxNodes);
+        addObservation(observation.inputs, observation.outputs);
         requestReadingAnalysis();
       } else {
-        const resistanceOhms = voltageV / currentA;
-        addObservation(
-          { voltage: voltageV, resistance: resistanceOhms },
-          { current: currentA * 1000, power: voltageV * currentA * 1000 },
-        );
+        const observation = buildOhmsLawObservation(voltageV, currentA, sandboxUsability);
+        addObservation(observation.inputs, observation.outputs);
         requestReadingAnalysis();
       }
     } else {
@@ -201,7 +197,7 @@ export default function Workspace() {
         && sandboxSimResult?.success === true
         && sandboxUsability === 'usable'
       )
-    : (sessionStatus !== "invalid");
+    : (liveResult?.canCapture !== false);
 
   const handleReset = () => {
     if (!entry) return;
@@ -210,6 +206,8 @@ export default function Workspace() {
       defaults[param.id] = param.default;
     }
     setSandboxNodes([]);
+    setSandboxEdges([]);
+    setCircuitGraph([], []);
     setSandboxSimResult(null);
     setSandboxExperimentResult(null);
     setSandboxUsability('unusable');
@@ -229,19 +227,23 @@ export default function Workspace() {
     const intervalMs = getSweepIntervalMs();
 
     if (entry.config.id === "oxalic-acid-titration" || entry.config.id === "mohrs-salt-titration") {
-      const maxVolume = entry.config.apparatus.find((param) => param.id === "volumeAdded")?.max ?? 100;
       const interval = setInterval(() => {
         const currentVol = apparatusValues.volumeAdded ?? 0;
         const rate = apparatusValues.flowRate ?? 0.5;
-        if (currentVol >= maxVolume) {
+        const currentResult = entry.engine.compute(apparatusValues, { noiseFraction });
+        if (shouldStopTitrationSweep(currentResult)) {
           setSessionStatus("complete");
           return;
         }
-        const nextVol = Math.min(maxVolume, Math.round((currentVol + rate * 2) * 10) / 10);
+        const endpointVolume = Number(currentResult.endpointVolume);
+        const nextVol = nextTitrationSweepVolume(currentVol, rate, endpointVolume);
         setApparatusValue("volumeAdded", nextVol);
         const newVals = { ...apparatusValues, volumeAdded: nextVol };
         const outputs = entry.engine.compute(newVals, { noiseFraction });
         addObservation(newVals, outputs);
+        if (shouldStopTitrationSweep(outputs)) {
+          setSessionStatus("complete");
+        }
       }, intervalMs);
       return () => clearInterval(interval);
     }
@@ -285,61 +287,38 @@ export default function Workspace() {
     } else if (activeExpId === 'series-parallel') {
       if (observations.length < 1) return null;
       const latest = observations[observations.length - 1];
+      const theoretical = latest.outputs.equivalentResistanceOhms ?? latest.outputs.resistance ?? 0;
+      const totalCurrentA = latest.outputs.totalCurrentA ?? (latest.outputs.current ?? 0) / 1000;
+      const measured = totalCurrentA > 0 ? (latest.outputs.voltage ?? 0) / totalCurrentA : 0;
+      const errorPct = theoretical > 0 ? Math.abs(measured - theoretical) / theoretical * 100 : 0;
+      const resistorValues = latest.outputs.resistorValuesOhms ? ` from resistors ${latest.outputs.resistorValuesOhms} Ω` : "";
       return {
         label1: 'Equivalent Resistance',
-        val1: `${(latest.outputs.resistance ?? 0).toFixed(2)} Ω`,
-        label2: 'Configuration',
-        val2: latest.outputs.configuration === 1 ? 'Series' : 'Parallel',
-        summary: `Measured ${(latest.outputs.resistance ?? 0).toFixed(2)} Ω in ${latest.outputs.configuration === 1 ? 'series' : 'parallel'} configuration.`,
+        val1: `${theoretical.toFixed(2)} Ω`,
+        label2: 'Measured Error',
+        val2: `${errorPct.toFixed(2)}%`,
+        summary: `${latest.outputs.configuration === 1 ? 'Series' : 'Parallel'} network${resistorValues}: theoretical equivalent resistance ${theoretical.toFixed(2)} Ω; V/I measurement ${measured.toFixed(2)} Ω (${errorPct.toFixed(2)}% difference).`,
       };
     } else {
       if (observations.length < 1) return null;
-      const latest = observations[observations.length - 1];
-      const vAnalyte = apparatusValues.aliquotVolume ?? 10;
-      const calculatedMolarity = 0.02;
+      const endpointObservation = [...observations].reverse().find(obs => obs.outputs.assessment === "endpoint");
+      if (!endpointObservation) return null;
+      const calculatedMolarity = endpointObservation.outputs.calculatedTitrantMolarity;
+      const actualMolarity = endpointObservation.outputs.actualTitrantMolarity;
+      const endpointVolume = endpointObservation.outputs.volAdded;
       return {
         label1: "KMnO₄ Molarity",
-        val1: `${calculatedMolarity.toFixed(4)} M`,
-        label2: "Equivalence Vol",
-        val2: `${latest.inputs.volumeAdded?.toFixed(2) ?? "--"} mL`,
-        summary: `Titrated ${vAnalyte} mL analyte with KMnO₄. Calculated molarity: ${calculatedMolarity.toFixed(4)} M.`,
+        val1: typeof calculatedMolarity === "number" ? `${calculatedMolarity.toFixed(5)} M` : "--",
+        label2: "Endpoint Volume",
+        val2: typeof endpointVolume === "number" ? `${endpointVolume.toFixed(2)} mL` : "--",
+        summary: `Engine-validated endpoint at ${Number(endpointVolume).toFixed(2)} mL; calculated KMnO₄ molarity ${Number(calculatedMolarity).toFixed(5)} M (simulation truth ${Number(actualMolarity).toFixed(5)} M).`,
       };
     }
-  }, [observations, activeExpId, apparatusValues]);
+  }, [observations, activeExpId]);
 
   const exportCSV = () => {
     if (observations.length === 0) return;
-    const isCircuit = entry.config.subject === "physics";
-    const headers = activeExpId === 'series-parallel'
-      ? "ID,Configuration,TotalVoltage(V),TotalCurrent(mA),EquivalentResistance(Ohms)\n"
-      : isCircuit
-      ? "ID,Voltage(V),Resistance(Ohms),Current(mA),Power(mW)\n"
-      : "ID,Titrant(mL),ColorIntensity,TotalVol(mL)\n";
-
-    const rows = observations
-      .map((obs) => {
-        if (activeExpId === 'series-parallel') {
-          return `${obs.id},${obs.outputs.configuration === 1 ? 'Series' : 'Parallel'},${obs.outputs.voltage ?? 0},${obs.outputs.current ?? 0},${obs.outputs.resistance ?? 0}`;
-        }
-        if (isCircuit) {
-          return `${obs.id},${obs.inputs.voltage ?? 0},${
-            obs.inputs.resistance ?? 100
-          },${obs.outputs.current ?? 0},${obs.outputs.power ?? 0}`;
-        }
-        return `${obs.id},${obs.inputs.volumeAdded ?? 0},${
-          obs.outputs.colorIntensity ?? 0
-        },${obs.outputs.totalVol ?? (obs.inputs.aliquotVolume ?? 10) + 5}`;
-      })
-      .join("\n");
-
-    const csvContent = "data:text/csv;charset=utf-8," + headers + rows;
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `galileo_${entry.config.id}_data.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    downloadExperimentCsv(activeExpId, observations, `galileo_${entry.config.id}_data.csv`);
   };
 
   const startDrag = (type: DragType, initialDim: number, e: React.MouseEvent) => {
@@ -423,17 +402,20 @@ export default function Workspace() {
 
   const handleSandboxUpdate = useCallback((
     nodes: Node[],
+    edges: Edge[],
     simResult: SimulationResult,
     issues: (OhmsLawIssueCode | SeriesParallelIssueCode)[],
     usability: ExperimentUsability,
     experimentResult: OhmsLawResult | SeriesParallelResult,
   ) => {
     setSandboxNodes(nodes);
+    setSandboxEdges(edges);
+    setCircuitGraph(nodes, edges);
     setSandboxSimResult(simResult);
     setSandboxIssues(issues);
     setSandboxUsability(usability);
     setSandboxExperimentResult(experimentResult);
-  }, []);
+  }, [setCircuitGraph]);
 
   const titrantVol = apparatusValues.volumeAdded ?? 0;
   const stirrerRPM = apparatusValues.stirrerSpeed ?? 300;
@@ -441,6 +423,15 @@ export default function Workspace() {
   const analyteVol = apparatusValues.aliquotVolume ?? 10;
   const isNearEquivalence = liveResult?.isNearEquivalence ?? false;
   const isNeutralized = liveResult?.isNeutralized ?? (titrantVol >= analyteVol);
+  const chemistryIssueCodes = Array.isArray(liveResult?.issueCodes) ? liveResult.issueCodes as string[] : [];
+  const chemistryBlocking = !isCircuit && liveResult?.reactionSupported === false;
+  const chemistryMessages = chemistryIssueCodes.map(code => ({
+    TEMPERATURE_TOO_LOW: "Heat the oxalic-acid flask to at least 50 °C before titrating.",
+    TEMPERATURE_TOO_HIGH: "Cool the oxalic-acid flask to 60 °C or below before titrating.",
+    ACID_MEDIUM_INSUFFICIENT: "The required sulfuric-acid medium is insufficient.",
+    SOURCE_PREPARATION_UNUSABLE: "The prepared standard solution is scientifically unusable.",
+    TRIAL_NOT_AT_ENDPOINT: "The current volume is not an endpoint reading.",
+  }[code] ?? code));
 
   return (
     <div className="h-screen w-screen max-w-full flex flex-col bg-[#131313] text-[#e5e2e1] overflow-hidden selection:bg-[#8da399] selection:text-[#263932]">
@@ -455,6 +446,8 @@ export default function Workspace() {
         observations={observations}
         summaryResult={computedStats?.summary}
         initialNotes={notes}
+        circuitNodes={sandboxNodes}
+        circuitEdges={sandboxEdges}
         onSuccess={() => {
           setSaveSuccessToast(true);
           setTimeout(() => setSaveSuccessToast(false), 2500);
@@ -621,12 +614,13 @@ export default function Workspace() {
           {!isCircuit && (
             <button
               type="button"
+              disabled={chemistryBlocking}
               onClick={() => {
                 const currentVol = apparatusValues.volumeAdded ?? 0;
                 const rate = apparatusValues.flowRate ?? 0.5;
                 setApparatusValue("volumeAdded", Math.min(50, currentVol + rate));
               }}
-              className="mt-2 w-full font-label-caps text-[11px] py-2.5 rounded bg-[#2a2a2a] hover:bg-[#353535] text-[#e5e2e1] border border-[#424845]/50 flex items-center justify-center gap-2 cursor-pointer transition-colors active:scale-95"
+              className="mt-2 w-full font-label-caps text-[11px] py-2.5 rounded bg-[#2a2a2a] hover:bg-[#353535] text-[#e5e2e1] border border-[#424845]/50 flex items-center justify-center gap-2 cursor-pointer transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className="material-symbols-outlined text-[14px]">water_drop</span>
               Add {apparatusValues.flowRate ?? 0.5} mL Titrant
@@ -646,12 +640,12 @@ export default function Workspace() {
               </div>
               <button
                 type="button"
-                disabled={sessionStatus === "invalid"}
+                disabled={chemistryBlocking || liveResult?.canSweep === false}
                 onClick={() =>
                   setSessionStatus(sessionStatus === "running" ? "paused" : "running")
                 }
                 className={`w-full py-2 rounded text-xs font-label-caps flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                  sessionStatus === "invalid"
+                  chemistryBlocking || liveResult?.canSweep === false
                     ? "bg-[#353535] text-[#8c8c8c] border border-[#424845] cursor-not-allowed opacity-50"
                     : sessionStatus === "running"
                     ? "bg-[#93000a] text-[#ffdad6] border border-[#ffb4ab]/30 hover:bg-[#690005]"
@@ -724,7 +718,7 @@ export default function Workspace() {
                       TITRANT (KMnO₄)
                     </div>
                     <div className="font-data-mono text-base text-[#bdc9c8] font-semibold">
-                      {titrantVol.toFixed(1)}
+                      {titrantVol.toFixed(2)}
                       <span className="text-[10px] text-[#c2c8c4] ml-1">mL</span>
                     </div>
                   </div>
@@ -734,14 +728,14 @@ export default function Workspace() {
           </div>
 
           {/* Validation Message UI is now managed below in ValidationPanel / circuit-specific */}
-          {!isCircuit && sessionStatus === "invalid" && validationMessages && validationMessages.length > 0 && (
-            <div className="bg-[#4a1919] border border-[#ffb4ab] rounded p-2.5 flex flex-col gap-1.5 mt-2 shadow-inner">
-              <div className="flex items-center gap-1.5 font-label-caps text-[10px] text-[#ffb4ab] font-bold">
-                <span className="material-symbols-outlined text-[14px]">error</span>
-                SYSTEM FAULT PREVENTS MEASUREMENT
+          {!isCircuit && chemistryMessages.length > 0 && (
+            <div className={`${chemistryBlocking ? "bg-[#4a1919] border-[#ffb4ab]" : "bg-amber-950/30 border-amber-400/50"} border rounded p-2.5 flex flex-col gap-1.5 mt-2 shadow-inner`}>
+              <div className={`flex items-center gap-1.5 font-label-caps text-[10px] ${chemistryBlocking ? "text-[#ffb4ab]" : "text-amber-300"} font-bold`}>
+                <span className="material-symbols-outlined text-[14px]">{chemistryBlocking ? "error" : "info"}</span>
+                {chemistryBlocking ? "PROCEDURE BLOCKS MEASUREMENT" : "PROCEDURAL GUIDANCE"}
               </div>
               <ul className="text-xs text-[#e5e2e1] list-disc list-inside space-y-1">
-                {validationMessages.map((msg, i) => (
+                {chemistryMessages.map((msg, i) => (
                   <li key={i}>{msg}</li>
                 ))}
               </ul>
@@ -919,6 +913,8 @@ export default function Workspace() {
                     <CircuitSandbox 
                       key={chatContextKey}
                       experimentType={activeExpId as 'ohms-law' | 'series-parallel'} 
+                      initialNodes={persistedCircuitNodes}
+                      initialEdges={persistedCircuitEdges}
                       onSimulationUpdate={handleSandboxUpdate}
                     />
                   </div>
@@ -942,7 +938,7 @@ export default function Workspace() {
                     <div className="h-px bg-[#424845]" />
                     <div>
                       <span className="font-label-caps text-[9px] text-[#c2c8c4] block">TITRANT ADDED</span>
-                      <span className="font-data-mono text-sm text-[#8da399] font-semibold">{titrantVol.toFixed(1)} mL</span>
+                      <span className="font-data-mono text-sm text-[#8da399] font-semibold">{titrantVol.toFixed(2)} mL</span>
                     </div>
                   </div>
 
@@ -1027,10 +1023,12 @@ export default function Workspace() {
                   </span>
                   Capture
                 </button>
+                {!isCircuit && <>
                 <div className="w-px h-4 bg-[#424845]" />
                 <button
                   type="button"
                   onClick={() => setSessionStatus(sessionStatus === "running" ? "paused" : "running")}
+                  disabled={chemistryBlocking || liveResult?.canSweep === false}
                   className="text-[#c2c8c4] hover:text-[#e5e2e1] transition-colors flex items-center gap-1 font-label-caps text-[11px] cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[16px]">
@@ -1038,6 +1036,7 @@ export default function Workspace() {
                   </span>
                   {sessionStatus === "running" ? "Pause" : "Sweep"}
                 </button>
+                </>}
                 <button
                   type="button"
                   onClick={handleReset}
@@ -1243,7 +1242,7 @@ export default function Workspace() {
                 <div className="text-[9px] text-[#c2c8c4] uppercase">
                   {computedStats?.label2 || (activeExpId === 'series-parallel'
                     ? "Configuration"
-                    : isCircuit ? "Experimental Error" : "Equivalence Vol")}
+                    : isCircuit ? "Experimental Error" : "Endpoint Volume")}
                 </div>
                 <div className="text-sm text-[#b5ccc1] font-semibold mt-0.5">
                   {computedStats?.val2 || "--"}

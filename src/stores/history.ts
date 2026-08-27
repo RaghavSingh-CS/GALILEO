@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Observation } from "@/experiments/types";
+import type { Edge, Node } from "@xyflow/react";
 
 export interface ConductedExperimentSession {
   id: string;
@@ -12,6 +13,7 @@ export interface ConductedExperimentSession {
   readingsCount: number;
   summaryResult: string;
   notes?: string;
+  circuit?: { nodes: Node[]; edges: Edge[] };
 }
 
 interface HistoryStore {

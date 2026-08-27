@@ -8,11 +8,16 @@ export function BatteryNode({ id, data }: NodeProps) {
   const valRef = useRef(voltage);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const delayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stop = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
+    }
+    if (delayRef.current) {
+      clearTimeout(delayRef.current);
+      delayRef.current = null;
     }
   }, []);
 
@@ -22,20 +27,29 @@ export function BatteryNode({ id, data }: NodeProps) {
 
   useEffect(() => {
     document.addEventListener('pointerup', stop);
-    return () => document.removeEventListener('pointerup', stop);
+    document.addEventListener('pointercancel', stop);
+    return () => {
+      document.removeEventListener('pointerup', stop);
+      document.removeEventListener('pointercancel', stop);
+      stop();
+    };
   }, [stop]);
 
   const startChange = (delta: number) => {
-    if (intervalRef.current) return;
+    if (intervalRef.current || delayRef.current) return;
     const step = () => {
       const nextVal = Math.max(0, valRef.current + delta);
+      valRef.current = nextVal;
       if (data?.onChange) {
         // @ts-ignore
         data.onChange(id, 'voltage', nextVal);
       }
     };
     step(); // Immediate
-    intervalRef.current = setInterval(step, 100);
+    delayRef.current = setTimeout(() => {
+      delayRef.current = null;
+      intervalRef.current = setInterval(step, 100);
+    }, 350);
   };
 
   const handleVoltageChange = (e: ChangeEvent<HTMLInputElement>) => {

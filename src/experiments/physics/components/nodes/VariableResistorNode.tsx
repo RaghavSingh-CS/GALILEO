@@ -9,6 +9,7 @@ export function VariableResistorNode({ id, data }: NodeProps) {
   const resistance = typeof data.resistance === 'number' ? data.resistance : 100;
   const valueRef = useRef(resistance);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const delayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const update = (value: number) => {
     if (typeof data.onChange === 'function') {
@@ -18,19 +19,33 @@ export function VariableResistorNode({ id, data }: NodeProps) {
   const stop = useCallback(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = null;
+    if (delayRef.current) clearTimeout(delayRef.current);
+    delayRef.current = null;
   }, []);
   useEffect(() => {
     valueRef.current = resistance;
   }, [resistance]);
   useEffect(() => {
     document.addEventListener('pointerup', stop);
-    return () => document.removeEventListener('pointerup', stop);
+    document.addEventListener('pointercancel', stop);
+    return () => {
+      document.removeEventListener('pointerup', stop);
+      document.removeEventListener('pointercancel', stop);
+      stop();
+    };
   }, [stop]);
   const startChange = (delta: number) => {
-    if (intervalRef.current) return;
-    const step = () => update(valueRef.current + delta);
+    if (intervalRef.current || delayRef.current) return;
+    const step = () => {
+      const next = Math.min(maxResistance, Math.max(minResistance, valueRef.current + delta));
+      valueRef.current = next;
+      update(next);
+    };
     step();
-    intervalRef.current = setInterval(step, 100);
+    delayRef.current = setTimeout(() => {
+      delayRef.current = null;
+      intervalRef.current = setInterval(step, 100);
+    }, 350);
   };
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const value = Number(event.target.value);

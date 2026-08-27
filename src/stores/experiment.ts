@@ -17,6 +17,7 @@ interface ExperimentSessionStore {
   onConnect: (connection: Connection) => void;
   setNodes: (nodes: Node[]) => void;
   setEdges: (edges: Edge[]) => void;
+  setCircuitGraph: (nodes: Node[], edges: Edge[]) => void;
   validationMessages: string[];
   
   // Physics Circuit State Output
@@ -30,7 +31,7 @@ interface ExperimentSessionStore {
 
   // Observations log
   observations: Observation[];
-  addObservation: (inputs: Record<string, number>, outputs: Record<string, number>) => void;
+  addObservation: (inputs: Record<string, number>, outputs: Record<string, any>) => void;
   readingAnalysisKey: number;
   requestReadingAnalysis: () => void;
   clearObservations: () => void;
@@ -46,7 +47,7 @@ interface ExperimentSessionStore {
   startExperiment: () => void;
   pauseExperiment: () => void;
   setSessionStatus: (status: SessionStatus) => void;
-  loadSession: (experimentId: string, apparatus: Record<string, number>, observations: Observation[], notes?: string) => void;
+  loadSession: (experimentId: string, apparatus: Record<string, number>, observations: Observation[], notes?: string, circuit?: { nodes: Node[]; edges: Edge[] }) => void;
 }
 
 export const useExperimentStore = create<ExperimentSessionStore>((set, get) => ({
@@ -74,6 +75,8 @@ export const useExperimentStore = create<ExperimentSessionStore>((set, get) => (
     set({ edges });
     get().onNodesChange([]); // trigger recalculation
   },
+
+  setCircuitGraph: (nodes, edges) => set({ nodes, edges }),
 
   onNodesChange: (changes) => {
     const state = get();
@@ -199,13 +202,16 @@ export const useExperimentStore = create<ExperimentSessionStore>((set, get) => (
 
   setSessionStatus: (status) => set({ sessionStatus: status }),
 
-  loadSession: (experimentId, apparatus, observations, notes) =>
+  loadSession: (experimentId, apparatus, observations, notes, circuit) =>
     set({
       activeExperimentId: experimentId,
       apparatusValues: { ...apparatus },
       observations: [...observations],
       observationCounter: observations.length,
       sessionStatus: 'idle',
+      chatContextKey: Date.now(),
       notes,
+      nodes: circuit?.nodes ? [...circuit.nodes] : [],
+      edges: circuit?.edges ? [...circuit.edges] : [],
     }),
 }));

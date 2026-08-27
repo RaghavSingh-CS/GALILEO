@@ -88,6 +88,7 @@ function buildSystemPrompt(
       inputs: Record<string, number>;
       outputs: Record<string, number>;
     }>;
+    scientificResult?: Record<string, unknown>;
     aiVerbosity?: string;
   }
 ): string {
@@ -118,6 +119,9 @@ function buildSystemPrompt(
     }
     if (context.observations && context.observations.length > 0) {
       prompt += `\nRecorded observations (${context.observations.length} readings): ${JSON.stringify(context.observations.slice(-10))}`;
+    }
+    if (context.scientificResult) {
+      prompt += `\nCurrent engine-derived scientific result and validation: ${JSON.stringify(context.scientificResult)}`;
     }
     if (context.aiVerbosity) {
       prompt += `\nTone: ${context.aiVerbosity === "detailed" ? "Pedagogical and detailed step-by-step" : "Concise and direct scientific briefing"}`;

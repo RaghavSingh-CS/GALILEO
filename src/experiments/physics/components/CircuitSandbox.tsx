@@ -46,8 +46,11 @@ const nodeTypes = {
 
 export interface CircuitSandboxProps {
   experimentType: 'ohms-law' | 'series-parallel';
+  initialNodes?: Node[];
+  initialEdges?: Edge[];
   onSimulationUpdate?: (
     nodes: Node[],
+    edges: Edge[],
     simResult: SimulationResult,
     issues: (OhmsLawIssueCode | SeriesParallelIssueCode)[],
     usability: ExperimentUsability,
@@ -55,12 +58,13 @@ export interface CircuitSandboxProps {
   ) => void;
 }
 
-function CircuitSandboxContent({ experimentType, onSimulationUpdate }: CircuitSandboxProps) {
-  const [nodes, setNodes] = useState<Node[]>([]);
-  const [edges, setEdges] = useState<Edge[]>([]);
-  const nodesRef = useRef<Node[]>([]);
-  const edgesRef = useRef<Edge[]>([]);
+function CircuitSandboxContent({ experimentType, initialNodes = [], initialEdges = [], onSimulationUpdate }: CircuitSandboxProps) {
+  const [nodes, setNodes] = useState<Node[]>(() => initialNodes.map(node => ({ ...node, data: { ...node.data } })));
+  const [edges, setEdges] = useState<Edge[]>(() => initialEdges.map(edge => ({ ...edge })));
+  const nodesRef = useRef<Node[]>(initialNodes);
+  const edgesRef = useRef<Edge[]>(initialEdges);
   const simulationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const restoredRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
@@ -130,7 +134,7 @@ function CircuitSandboxContent({ experimentType, onSimulationUpdate }: CircuitSa
     setNodes(updatedNodes);
 
     if (onSimulationUpdate) {
-      onSimulationUpdate(updatedNodes, simResult, expIssues, expUsability, experimentResult);
+      onSimulationUpdate(updatedNodes, currentEdges, simResult, expIssues, expUsability, experimentResult);
     }
 
   }, [experimentType, onSimulationUpdate]);
@@ -205,6 +209,21 @@ function CircuitSandboxContent({ experimentType, onSimulationUpdate }: CircuitSa
       return nextNodes;
     });
   }, [scheduleSimulation]);
+
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    const restoredNodes = initialNodes.map(node => ({
+      ...node,
+      data: { ...node.data, onChange: onNodeDataChange },
+    }));
+    const restoredEdges = initialEdges.map(edge => ({ ...edge }));
+    nodesRef.current = restoredNodes;
+    edgesRef.current = restoredEdges;
+    setNodes(restoredNodes);
+    setEdges(restoredEdges);
+    scheduleSimulation(restoredNodes, restoredEdges);
+  }, [initialEdges, initialNodes, onNodeDataChange, scheduleSimulation]);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -281,6 +300,29 @@ function CircuitSandboxContent({ experimentType, onSimulationUpdate }: CircuitSa
           connectionRadius={40}
           className="bg-slate-900"
         >
+          <div className="absolute right-3 top-3 z-10">
+            <button
+              type="button"
+              onClick={() => {
+                const selectedNodeIds = new Set(nodes.filter(node => node.selected).map(node => node.id));
+                const selectedEdgeIds = new Set(edges.filter(edge => edge.selected).map(edge => edge.id));
+                if (selectedNodeIds.size === 0 && selectedEdgeIds.size === 0) return;
+                const nextNodes = nodes.filter(node => !selectedNodeIds.has(node.id));
+                const nextEdges = edges.filter(edge => !selectedEdgeIds.has(edge.id)
+                  && !selectedNodeIds.has(edge.source) && !selectedNodeIds.has(edge.target));
+                nodesRef.current = nextNodes;
+                edgesRef.current = nextEdges;
+                setNodes(nextNodes);
+                setEdges(nextEdges);
+                scheduleSimulation(nextNodes, nextEdges);
+              }}
+              disabled={!nodes.some(node => node.selected) && !edges.some(edge => edge.selected)}
+              className="rounded border border-red-400/40 bg-slate-900/95 px-2 py-1 text-[11px] text-red-300 shadow disabled:cursor-not-allowed disabled:opacity-40"
+              title="Delete the selected component or wire"
+            >
+              Delete selected
+            </button>
+          </div>
           <Background color="#334155" gap={24} />
           <Controls className="bg-slate-800 border-slate-700 fill-slate-300" />
         </ReactFlow>

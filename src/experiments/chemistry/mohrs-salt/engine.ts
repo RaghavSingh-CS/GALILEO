@@ -1,60 +1,57 @@
 import type { SimulationEngine, SimulationResult } from "../../types";
 import {
-  MOHRS_SALT_PREPARATION_SPEC,
   applyMohrsSaltPreparationAction,
   createMohrsSaltPreparation,
-  MOHRS_SALT_HEXAHYDRATE_MATERIAL_ID
+  MOHRS_SALT_HEXAHYDRATE_MATERIAL_ID,
+  MOHRS_SALT_PREPARATION_SPEC,
 } from "../preparation/named/mohrs-salt";
-
 import {
   addMohrsSaltTitrationAcid,
   applyMohrsSaltTitrationDelivery,
+  completeMohrsSaltTitration,
   createMohrsSaltTitration,
   deriveMohrsSaltTitrationResult,
+  MOHRS_SALT_TITRATION_SPEC,
   prepareMohrsSaltTitrationAliquot,
   startMohrsSaltTitration,
 } from "../permanganate/named/mohrs-salt";
 
 function buildMohrsSaltTrial(volumeAdded: number) {
   let preparation = createMohrsSaltPreparation().state;
-
   preparation = applyMohrsSaltPreparationAction(preparation, {
     type: "add-material",
     materialId: MOHRS_SALT_HEXAHYDRATE_MATERIAL_ID,
     measuredMassG: MOHRS_SALT_PREPARATION_SPEC.targetMassG,
   }).state;
-
-  preparation = applyMohrsSaltPreparationAction(preparation, {
-    type: "add-external-solvent-volume",
-    volumeL: 0.1,
-  }).state;
-
+  preparation = applyMohrsSaltPreparationAction(preparation, { type: "add-external-solvent-volume", volumeL: 0.1 }).state;
   preparation = applyMohrsSaltPreparationAction(preparation, { type: "mix" }).state;
-
-  preparation = applyMohrsSaltPreparationAction(preparation, {
-    type: "acidify-with-dilute-sulfuric-acid",
-  }).state;
-
+  preparation = applyMohrsSaltPreparationAction(preparation, { type: "acidify-with-dilute-sulfuric-acid" }).state;
   preparation = applyMohrsSaltPreparationAction(preparation, {
     type: "add-external-solvent-volume",
     volumeL: MOHRS_SALT_PREPARATION_SPEC.targetVolumeL - 0.1,
   }).state;
-
-  preparation = applyMohrsSaltPreparationAction(preparation, {
-    type: "complete-preparation",
-  }).state;
+  preparation = applyMohrsSaltPreparationAction(preparation, { type: "complete-preparation" }).state;
 
   let trial = createMohrsSaltTitration(preparation).state;
   trial = prepareMohrsSaltTitrationAliquot(trial).state;
   trial = addMohrsSaltTitrationAcid(trial).state;
   trial = startMohrsSaltTitration(trial, 1.2).state;
-
-  if (volumeAdded > 0) {
-    trial = applyMohrsSaltTitrationDelivery(trial, volumeAdded).state;
-  }
-
+  if (volumeAdded > 0) trial = applyMohrsSaltTitrationDelivery(trial, volumeAdded).state;
+  trial = completeMohrsSaltTitration(trial).state;
   return deriveMohrsSaltTitrationResult(trial);
 }
+
+const equivalenceVolumeMl = (
+  MOHRS_SALT_TITRATION_SPEC.nominalStandardMolarityMolPerL
+  * (MOHRS_SALT_TITRATION_SPEC.aliquotVolumeMl / 1000)
+  * MOHRS_SALT_TITRATION_SPEC.permanganateToReactiveIronRatio
+  / MOHRS_SALT_TITRATION_SPEC.actualTitrantMolarityMolPerL
+) * 1000;
+
+const endpointVolumeMl = equivalenceVolumeMl + (
+  MOHRS_SALT_TITRATION_SPEC.endpointExcessAllowanceMol
+  / MOHRS_SALT_TITRATION_SPEC.actualTitrantMolarityMolPerL
+) * 1000;
 
 export const mohrsSaltEngine: SimulationEngine = {
   outputColumns: [
@@ -65,50 +62,31 @@ export const mohrsSaltEngine: SimulationEngine = {
 
   compute(inputs: Record<string, number>, options?: { noiseFraction?: number }): SimulationResult {
     void options;
-    const volAdded = inputs.volumeAdded ?? 0;
-    const aliquotVolume = inputs.aliquotVolume ?? 10;
-
-    // We assume 4.90g dissolved in 250mL -> 0.05M standard
-    // 1 mole KMnO4 reacts with 5 moles Mohr's Salt (Fe2+)
-    // KMnO4 (titrant) = M1, Mohr's (aliquot) = M2
-    const mMohrs = 0.05;
-    const vMohrs = aliquotVolume; // mL
-    const mPermanganate = 0.02; // Typical real concentration is ~0.02M
-    
-    // Equivalence volume
-    const molesMohrs = mMohrs * (vMohrs / 1000);
-    const molesPermanganateRequired = molesMohrs * (1/5);
-    const equivalenceVolume = (molesPermanganateRequired / mPermanganate) * 1000;
-    
-    // Validate engine state natively
-    const chemResult = buildMohrsSaltTrial(volAdded);
-    
-    const isNearEquivalence = Math.abs(volAdded - equivalenceVolume) < 3.0;
-    const isNeutralized = volAdded >= equivalenceVolume;
-    
-    // Determine color intensity (0 = colorless, 1 = deep purple/pink)
-    let colorIntensity = 0;
-    if (!chemResult.reactionSupported && volAdded > 0) {
-        colorIntensity = Math.min(1.0, volAdded / 5);
-    } else {
-        if (volAdded >= equivalenceVolume) {
-            // Excess permanganate
-            const excess = volAdded - equivalenceVolume;
-            colorIntensity = Math.min(1.0, excess / 5.0);
-        } else {
-            colorIntensity = 0;
-        }
-    }
-    
-    const observedVolAdded = Math.max(0, volAdded);
+    const result = buildMohrsSaltTrial(inputs.volumeAdded ?? 0);
+    const assessment = result.permanganateAssessment?.trialAssessment ?? null;
+    const excessMol = result.permanganateAssessment?.excessPermanganateMol ?? 0;
+    const colorIntensity = assessment === "endpoint"
+      ? 0.15
+      : assessment === "overshot"
+        ? Math.min(1, 0.15 + excessMol / MOHRS_SALT_TITRATION_SPEC.endpointExcessAllowanceMol * 0.15)
+        : 0;
 
     return {
-      colorIntensity: Math.max(0, Math.min(1, colorIntensity)),
-      volAdded: Math.round(observedVolAdded * 100) / 100,
-      totalVol: Math.round((aliquotVolume + 5 + observedVolAdded) * 100) / 100,
-      equivalenceVolume,
-      isNearEquivalence,
-      isNeutralized
+      colorIntensity,
+      volAdded: Math.round(result.deliveredVolumeMl * 100) / 100,
+      totalVol: Math.round((MOHRS_SALT_TITRATION_SPEC.aliquotVolumeMl + 5 + result.deliveredVolumeMl) * 100) / 100,
+      equivalenceVolume: equivalenceVolumeMl,
+      endpointVolume: endpointVolumeMl,
+      actualTitrantMolarity: result.actualTitrantMolarityMolPerL,
+      calculatedTitrantMolarity: result.calculatedTitrantMolarityMolPerL,
+      reactionSupported: result.reactionSupported,
+      assessment,
+      usability: result.usability,
+      issueCodes: [...result.issues],
+      isNearEquivalence: assessment === "before-endpoint" && result.deliveredVolumeMl >= equivalenceVolumeMl - 3,
+      isNeutralized: result.permanganateAssessment?.equivalenceSatisfied ?? false,
+      canCapture: result.reactionSupported,
+      canSweep: result.reactionSupported && assessment !== "endpoint" && assessment !== "overshot",
     };
   },
 };

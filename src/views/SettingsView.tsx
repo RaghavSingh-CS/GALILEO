@@ -246,7 +246,7 @@ export default function SettingsView() {
                         {
                           id: "realistic" as NoiseLevel,
                           title: "Standard Lab Precision (±1.5%)",
-                          desc: "Standard physical meter tolerances for digital multimeters & pH probes.",
+                          desc: "Standard physical meter tolerances for digital meters and titration observations.",
                         },
                         {
                           id: "high" as NoiseLevel,
@@ -332,7 +332,7 @@ export default function SettingsView() {
                       Live Graph Curve Fitting
                     </h3>
                     <p className="font-body-md text-xs text-[#c2c8c4] mt-1">
-                      Choose how Recharts renders the V-I characteristic and pH neutralization curves in the Workspace.
+                      Choose how Recharts renders V-I characteristics and titration color-intensity curves in the Workspace.
                     </p>
                   </div>
 

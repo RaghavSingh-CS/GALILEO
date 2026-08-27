@@ -53,4 +53,22 @@ describe('Experiment Store - Session Isolation', () => {
     // Observations should be completely cleared
     expect(finalState.observations.length).toBe(0);
   });
+
+  it('restores the minimum persisted Physics graph and clears it on a fresh session', () => {
+    const nodes = [
+      { id: 'battery-1', type: 'battery', position: { x: 10, y: 20 }, data: { voltage: 14, label: 'Battery 1' } },
+      { id: 'resistor-1', type: 'resistor', position: { x: 200, y: 20 }, data: { resistance: 97, label: 'Resistor 1' } },
+    ];
+    const edges = [
+      { id: 'wire-1', source: 'battery-1', target: 'resistor-1', sourceHandle: 'battery-1:positive', targetHandle: 'resistor-1:a' },
+    ];
+
+    useExperimentStore.getState().loadSession('ohms-law', {}, [], 'restored', { nodes, edges });
+    expect(useExperimentStore.getState().nodes).toEqual(nodes);
+    expect(useExperimentStore.getState().edges).toEqual(edges);
+
+    useExperimentStore.getState().startSession('ohms-law', {});
+    expect(useExperimentStore.getState().nodes).toEqual([]);
+    expect(useExperimentStore.getState().edges).toEqual([]);
+  });
 });

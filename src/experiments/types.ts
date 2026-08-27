@@ -26,7 +26,7 @@ export interface Observation {
   id: number;
   timestamp: number;
   inputs: Record<string, number>;
-  outputs: Record<string, number>;
+  outputs: Record<string, any>;
 }
 
 export interface SimulationEngine {

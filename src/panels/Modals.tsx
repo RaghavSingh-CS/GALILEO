@@ -3,6 +3,7 @@ import { useNavigationStore } from "@/stores/navigation";
 import { useExperimentStore } from "@/stores/experiment";
 import { useHistoryStore } from "@/stores/history";
 import { getExperiment } from "@/experiments/registry";
+import type { Edge, Node } from "@xyflow/react";
 
 interface ModalProps {
   isOpen: boolean;
@@ -180,6 +181,8 @@ interface SaveExperimentModalProps {
   observations: any[];
   summaryResult?: string;
   initialNotes?: string;
+  circuitNodes?: Node[];
+  circuitEdges?: Edge[];
   onSuccess?: () => void;
 }
 
@@ -193,6 +196,8 @@ export function SaveExperimentModal({
   observations,
   summaryResult,
   initialNotes = "",
+  circuitNodes = [],
+  circuitEdges = [],
   onSuccess,
 }: SaveExperimentModalProps) {
   const saveSession = useHistoryStore((s) => s.saveSession);
@@ -227,6 +232,23 @@ export function SaveExperimentModal({
       readingsCount: observations.length,
       summaryResult: finalSummary,
       notes: notes.trim(),
+      circuit: subject === "physics" ? {
+        nodes: circuitNodes.map(node => ({
+          id: node.id,
+          type: node.type,
+          position: { ...node.position },
+          data: Object.fromEntries(Object.entries(node.data).filter(([key, value]) =>
+            !["onChange", "reading", "highlight"].includes(key) && typeof value !== "function")),
+        })),
+        edges: circuitEdges.map(edge => ({
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          sourceHandle: edge.sourceHandle,
+          targetHandle: edge.targetHandle,
+          type: edge.type,
+        })),
+      } : undefined,
     });
 
     onClose();
